@@ -1,0 +1,1172 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence, useInView, useScroll, useTransform } from "framer-motion";
+import {
+    Sparkles, Zap, Camera, Rocket, BarChart2, GitBranch, Brain, ArrowRight,
+    X, Check, Loader2, Heart, MessageCircle, Share2, Bookmark, ThumbsUp,
+    ChevronRight, Star, TrendingUp, Pause, RefreshCw, DollarSign, Target,
+    Eye,
+} from "lucide-react";
+import clsx from "clsx";
+
+// ─── Types & data ─────────────────────────────────────────────────────────────
+type Tab = "facebook" | "instagram" | "story";
+type Variant = "A" | "B" | "C";
+type AgentType = "analyze" | "scale" | "pause" | "generate" | "info";
+
+const PLACEHOLDERS = [
+    "I want to promote my fitness app",
+    "I want to sell my online course",
+    "I want leads for my real estate business",
+    "I want to grow my skincare brand",
+    "I want sign-ups for my SaaS tool",
+];
+
+const PIPELINE_STEPS = [
+    { label: "Understanding your product", icon: "🧠" },
+    { label: "Crafting ad copy", icon: "✍️" },
+    { label: "Designing creatives", icon: "🎨" },
+    { label: "Preparing campaigns", icon: "🚀" },
+];
+
+const AD_VARIANTS: Record<Variant, { headline: string; hook: string; cta: string; tag: string; tagColor: string }> = {
+    A: {
+        headline: "Transform Your Life Today",
+        hook: "Join 50,000+ people who achieved their goals with our proven system. Start in minutes.",
+        cta: "Learn More", tag: "🔥 High CTR", tagColor: "badge-yellow",
+    },
+    B: {
+        headline: "Limited Offer — 40% Off",
+        hook: "Don't miss out. Our top-rated solution is now 40% off for the next 24 hours.",
+        cta: "Claim Offer", tag: "💡 Recommended", tagColor: "badge-coral",
+    },
+    C: {
+        headline: "Still Struggling? Here's Why",
+        hook: "Most people fail because they don't have the right system. We fixed that. See how.",
+        cta: "See How", tag: "⚡ Best ROAS", tagColor: "badge-green",
+    },
+};
+
+const ACTIVITY_MESSAGES: { icon: string; text: string; type: AgentType }[] = [
+    { icon: "🧠", text: "Analyzing your target audience...", type: "analyze" },
+    { icon: "📊", text: "Generating 3 ad variations...", type: "generate" },
+    { icon: "✅", text: "Best hook selected (Variant A)", type: "info" },
+    { icon: "🎯", text: "Targeting: 25–34, interests matched", type: "analyze" },
+    { icon: "🚀", text: "Campaigns ready to launch", type: "scale" },
+];
+
+const AGENT_FEED: { text: string; type: AgentType }[] = [
+    { text: "Analyzing competitor ads in your niche…", type: "analyze" },
+    { text: "CTR on Ad B: 4.2% — scaling budget by 20%", type: "scale" },
+    { text: "Paused Ad A: CTR dropped below threshold", type: "pause" },
+    { text: "Generating new creative variation…", type: "generate" },
+    { text: "Best audience: 25–34, fitness & wellness", type: "analyze" },
+    { text: "ROAS improved to 3.8x — increasing spend", type: "scale" },
+    { text: "New hook outperforming by 34%", type: "info" },
+    { text: "Refreshing creative — fatigue detected", type: "generate" },
+];
+
+const AGENT_BADGE: Record<AgentType, { label: string; cls: string; Icon: React.ElementType }> = {
+    analyze: { label: "Analyze", cls: "badge-blue", Icon: Brain },
+    scale: { label: "Scale", cls: "badge-green", Icon: TrendingUp },
+    pause: { label: "Pause", cls: "badge-red", Icon: Pause },
+    generate: { label: "Generate", cls: "badge-yellow", Icon: RefreshCw },
+    info: { label: "Info", cls: "badge-coral", Icon: Sparkles },
+};
+
+const FEATURES = [
+    { icon: <Sparkles size={18} />, label: "✦ Magic Copy", title: "Write ads like a pro", desc: "GPT-powered headlines, hooks, and CTAs in seconds — calibrated for your niche." },
+    { icon: <Camera size={18} />, label: "✦ Magic Preview", title: "See ads before you ship", desc: "Pixel-perfect Facebook & Instagram renders for every variation." },
+    { icon: <Rocket size={18} />, label: "✦ Magic Launch", title: "Publish without the hassle", desc: "One click pushes campaigns live — no Meta Business Manager required." },
+    { icon: <BarChart2 size={18} />, label: "✦ Magic Insights", title: "Real-time performance", desc: "Live CTR, CPC, conversions — refreshed every minute." },
+    { icon: <GitBranch size={18} />, label: "✦ Magic Tests", title: "A/B without the headache", desc: "AI tests ad variations and kills losers automatically." },
+    { icon: <Brain size={18} />, label: "✦ Magic Agents", title: "24/7 optimization", desc: "Scale winners, pause losers, refresh creatives — hands-free." },
+];
+
+const PRICING = [
+    {
+        name: "Starter", price: "Free", period: "", featured: false,
+        desc: "Try MetaBuddy for free",
+        features: ["5 ads per month", "Multi-platform preview", "Basic analytics", "Email support"],
+        cta: "Start for free",
+    },
+    {
+        name: "Pro", price: "$49", period: "/mo", featured: true,
+        desc: "For serious advertisers",
+        features: ["Unlimited ads", "Auto-optimization 24/7", "A/B testing", "Priority support", "Multi-account"],
+        cta: "Start 7-day trial",
+    },
+    {
+        name: "Growth", price: "$149", period: "/mo", featured: false,
+        desc: "Full AI agent control",
+        features: ["Everything in Pro", "API access", "Custom AI training", "Dedicated manager", "Slack integration"],
+        cta: "Contact sales",
+    },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function Counter({ target, suffix = "" }: { target: number; suffix?: string }) {
+    const ref = useRef < HTMLSpanElement > (null);
+    const inView = useInView(ref, { once: true, margin: "-80px" });
+    const [count, setCount] = useState(0);
+    useEffect(() => {
+        if (!inView) return;
+        let current = 0;
+        const inc = target / 60;
+        const t = setInterval(() => {
+            current += inc;
+            if (current >= target) { setCount(target); clearInterval(t); }
+            else setCount(parseFloat(current.toFixed(1)));
+        }, 30);
+        return () => clearInterval(t);
+    }, [inView, target]);
+    return <span ref={ref}>{count}{suffix}</span>;
+}
+
+function FadeInUp({ children, delay = 0, className = "" }: { children: React.ReactNode; delay?: number; className?: string }) {
+    const ref = useRef < HTMLDivElement > (null);
+    const inView = useInView(ref, { once: true, margin: "-50px" });
+    return (
+        <motion.div ref={ref}
+            initial={{ opacity: 0, y: 28 }}
+            animate={inView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.65, delay, ease: [0.22, 1, 0.36, 1] }}
+            className={className}
+        >{children}</motion.div>
+    );
+}
+
+// ─── Ad Previews (light) ──────────────────────────────────────────────────────
+function FacebookPreview({ variant }: { variant: Variant }) {
+    const v = AD_VARIANTS[variant];
+    return (
+        <motion.div key={`fb-${variant}`} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}
+            className="float-tile overflow-hidden bg-white">
+            <div className="p-3 flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                    <Target size={18} />
+                </div>
+                <div>
+                    <p className="text-[12px] font-bold text-[#050505]">Your Brand</p>
+                    <p className="text-[10px] text-[#65676b] flex items-center gap-1">
+                        Sponsored · <Eye size={10} />
+                    </p>
+                </div>
+                <div className="ml-auto text-[#65676b] text-sm">•••</div>
+            </div>
+            <div className="px-3 pb-3">
+                <p className="text-[13px] text-[#050505] leading-[1.3]">{v.hook}</p>
+            </div>
+            <div className="aspect-[1.91/1] relative overflow-hidden bg-slate-50 border-y border-slate-100">
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                        <Sparkles size={32} className="mx-auto mb-2 text-slate-200" />
+                        <p className="text-[10px] text-slate-300 uppercase tracking-widest font-bold">Ad Creative</p>
+                    </div>
+                </div>
+                {/* Mock image overlay */}
+                <div className="absolute inset-0 bg-gradient-to-br from-orange-100/30 to-violet-100/30" />
+            </div>
+            <div className="bg-[#f0f2f5] p-3 flex items-center justify-between">
+                <div className="flex-1 min-w-0 pr-2">
+                    <p className="text-[11px] text-[#65676b] uppercase truncate">YOURBRAND.COM</p>
+                    <p className="text-[14px] font-bold text-[#050505] truncate">{v.headline}</p>
+                </div>
+                <button className="text-[12px] font-bold px-4 py-2 rounded-md bg-white border border-slate-300 text-[#050505] whitespace-nowrap shadow-sm">
+                    {v.cta}
+                </button>
+            </div>
+            <div className="px-3 py-1 flex items-center gap-1 border-b border-slate-200/50 mx-3">
+                <div className="flex -space-x-1">
+                    <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center ring-1 ring-white">
+                        <ThumbsUp size={8} className="text-white fill-white" />
+                    </div>
+                    <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center ring-1 ring-white">
+                        <Heart size={8} className="text-white fill-white" />
+                    </div>
+                </div>
+                <span className="text-[11px] text-[#65676b] ml-1">1.2K</span>
+            </div>
+            <div className="px-3 py-1 flex items-center justify-around">
+                {[{ icon: <ThumbsUp size={16} />, label: "Like" }, { icon: <MessageCircle size={16} />, label: "Comment" }, { icon: <Share2 size={16} />, label: "Share" }].map(({ icon, label }) => (
+                    <button key={label} className="flex-1 py-1.5 flex items-center justify-center gap-1.5 text-[12px] text-[#65676b] font-bold hover:bg-slate-50 rounded-md transition-colors">
+                        {icon} {label}
+                    </button>
+                ))}
+            </div>
+        </motion.div>
+    );
+}
+
+function InstagramPreview({ variant }: { variant: Variant }) {
+    const v = AD_VARIANTS[variant];
+    return (
+        <motion.div key={`ig-${variant}`} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}
+            className="float-tile overflow-hidden bg-white">
+            <div className="p-3 flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full p-[1.5px]" style={{ background: "linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)" }}>
+                    <div className="w-full h-full rounded-full bg-white p-[1.5px]">
+                        <div className="w-full h-full rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                            <Sparkles size={12} />
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <p className="text-[12px] font-bold text-[#262626]">yourbrand</p>
+                    <p className="text-[10px] text-[#262626]">Sponsored</p>
+                </div>
+                <div className="ml-auto text-slate-900 text-lg leading-none pb-2">...</div>
+            </div>
+            <div className="aspect-square relative overflow-hidden bg-slate-50">
+                <div className="absolute inset-0 flex items-center justify-center text-slate-200">
+                    <div className="text-center">
+                        <Zap size={48} className="mx-auto mb-2 opacity-50" />
+                        <p className="text-[10px] uppercase tracking-widest font-bold">Instagram Creative</p>
+                    </div>
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-tr from-violet-100/30 to-orange-100/30" />
+            </div>
+            <div className="p-3">
+                <div className="flex items-center gap-4 mb-3">
+                    <Heart size={24} className="text-slate-900 stroke-[1.5]" />
+                    <MessageCircle size={24} className="text-slate-900 stroke-[1.5]" />
+                    <Share2 size={24} className="text-slate-900 stroke-[1.5]" />
+                    <Bookmark size={24} className="ml-auto text-slate-900 stroke-[1.5]" />
+                </div>
+                <p className="text-[13px] font-bold text-slate-900 mb-1.5">1,482 likes</p>
+                <p className="text-[13px] text-slate-900 leading-snug">
+                    <span className="font-bold mr-1.5">yourbrand</span>
+                    {v.hook}
+                </p>
+                <p className="text-[12px] text-slate-500 mt-1 mb-2 italic">See translation</p>
+                <button className="mt-2 w-full text-[13px] font-bold py-2.5 rounded-md text-white shadow-md active:scale-[0.98] transition-transform"
+                    style={{ background: "#3897f0" }}>{v.cta}</button>
+            </div>
+        </motion.div>
+    );
+}
+
+function StoryPreview({ variant }: { variant: Variant }) {
+    const v = AD_VARIANTS[variant];
+    return (
+        <motion.div key={`st-${variant}`} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}
+            className="float-tile overflow-hidden mx-auto"
+            style={{ background: "linear-gradient(170deg,#ff6b47,#8b5cf6,#6366f1)", maxWidth: "200px", aspectRatio: "9/16", display: "flex", flexDirection: "column" }}>
+            <div className="p-3">
+                <div className="h-0.5 rounded-full mb-3 bg-white/40" />
+                <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full p-0.5 bg-white/30">
+                        <div className="w-full h-full rounded-full bg-white/80" />
+                    </div>
+                    <div>
+                        <p className="text-[9px] font-bold text-white">yourbrand</p>
+                        <p className="text-[8px] text-white/70">Sponsored</p>
+                    </div>
+                </div>
+            </div>
+            <div className="flex-1 flex items-center justify-center px-4">
+                <div className="text-center text-white">
+                    <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center mx-auto mb-3">
+                        <Sparkles size={24} />
+                    </div>
+                    <p className="font-bold text-[11px] leading-tight mb-2">{v.headline}</p>
+                    <p className="text-[9px] text-white/80">{v.hook.slice(0, 50)}...</p>
+                </div>
+            </div>
+            <div className="p-3">
+                <button className="w-full text-[10px] font-bold py-2 rounded-full bg-white text-slate-900">
+                    {v.cta} ↑
+                </button>
+            </div>
+        </motion.div>
+    );
+}
+
+// ─── Modal (light theme) ──────────────────────────────────────────────────────
+function AdModal({ open, onClose, userInput }: { open: boolean; onClose: () => void; userInput: string }) {
+    const [stepsDone, setStepsDone] = useState < number[] > ([]);
+    const [loadingStep, setLoadingStep] = useState(0);
+    const [activeTab, setActiveTab] = useState < Tab > ("facebook");
+    const [activeVariant, setActiveVariant] = useState < Variant > ("A");
+    const [activityItems, setActivityItems] = useState < number[] > ([]);
+    const [showPreview, setShowPreview] = useState(false);
+
+    useEffect(() => {
+        if (!open) return;
+        setStepsDone([]); setLoadingStep(0); setActivityItems([]);
+        setShowPreview(false); setActiveTab("facebook"); setActiveVariant("A");
+
+        PIPELINE_STEPS.forEach((_, i) => {
+            setTimeout(() => setLoadingStep(i), i * 850);
+            setTimeout(() => setStepsDone(prev => [...prev, i]), i * 850 + 650);
+        });
+        setTimeout(() => setShowPreview(true), PIPELINE_STEPS.length * 850 + 400);
+        ACTIVITY_MESSAGES.forEach((_, i) => {
+            setTimeout(() => setActivityItems(prev => [...prev, i]), 500 + i * 950);
+        });
+    }, [open]);
+
+    const displayText = userInput.trim() || PLACEHOLDERS[0];
+
+    return (
+        <AnimatePresence>
+            {open && (
+                <motion.div key="backdrop"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6"
+                    style={{ background: "rgba(255, 255, 255, 0.65)", backdropFilter: "blur(30px) saturate(150%)" }}>
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.92, y: 30 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                        className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto"
+                        style={{
+                            background: "#ffffff",
+                            borderRadius: "32px",
+                            boxShadow: "0 40px 100px rgba(15,23,42,0.22), 0 12px 32px rgba(15,23,42,0.08)",
+                            border: "1px solid rgba(15,23,42,0.04)",
+                        }}>
+                        {/* Top accent bar */}
+                        <div className="h-1" style={{ background: "linear-gradient(90deg, #ff6b47, #ff9466, #fbbf24, #c4b5fd, #6366f1)" }} />
+
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-8 py-6 border-b" style={{ borderColor: "rgba(15,23,42,0.06)" }}>
+                            <div>
+                                <div className="flex items-center gap-2.5 mb-1.5">
+                                    <span className="text-[10px] font-bold text-orange-600 uppercase tracking-[0.2em] bg-orange-50 px-2 py-0.5 rounded">✦ Creation Engine</span>
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400 font-bold">Processing</span>
+                                </div>
+                                <h2 className="text-xl sm:text-2xl heading leading-tight">
+                                    Generating ads for <span className="serif-italic text-slate-500">"{displayText.slice(0, 30)}{displayText.length > 30 ? "..." : ""}"</span>
+                                </h2>
+                            </div>
+                            <button onClick={onClose} className="p-2.5 rounded-full hover:bg-slate-100 transition-all text-slate-400 hover:text-slate-900 active:scale-90">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Left: Pipeline + Activity */}
+                            <div className="flex flex-col gap-5">
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">AI Pipeline</p>
+                                    <div className="space-y-2">
+                                        {PIPELINE_STEPS.map((step, i) => {
+                                            const isDone = stepsDone.includes(i);
+                                            const isLoading = loadingStep === i && !isDone;
+                                            const isPending = !isDone && !isLoading;
+                                            return (
+                                                <motion.div key={i}
+                                                    initial={{ opacity: 0, x: -12 }} animate={{ opacity: isPending ? 0.45 : 1, x: 0 }}
+                                                    transition={{ delay: i * 0.06, duration: 0.4 }}
+                                                    className="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl"
+                                                    style={{
+                                                        background: isDone ? "rgba(255,107,71,0.06)" : "#fafaf6",
+                                                        border: isDone ? "1px solid rgba(255,107,71,0.2)" : "1px solid rgba(15,23,42,0.05)",
+                                                    }}>
+                                                    <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                                                        style={{ background: isDone ? "linear-gradient(135deg,#ff6b47,#ff8a6b)" : "rgba(15,23,42,0.05)" }}>
+                                                        {isDone ? <Check size={12} className="text-white" /> :
+                                                            isLoading ? <Loader2 size={12} className="text-orange-500 animate-spin" /> :
+                                                                <span className="text-[10px] text-slate-400">{i + 1}</span>}
+                                                    </div>
+                                                    <span className="text-[11px]">{step.icon}</span>
+                                                    <p className={clsx("text-xs font-medium flex-1", isDone ? "text-slate-900" : "text-slate-500")}>
+                                                        {step.label}
+                                                    </p>
+                                                    {isDone && <span className="text-[9px] text-orange-600 font-semibold uppercase tracking-wide">Done</span>}
+                                                </motion.div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Live Agent Activity</p>
+                                    <div className="space-y-2">
+                                        <AnimatePresence>
+                                            {activityItems.map(i => {
+                                                const msg = ACTIVITY_MESSAGES[i];
+                                                const badge = AGENT_BADGE[msg.type];
+                                                return (
+                                                    <motion.div key={i}
+                                                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                                                        className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-2xl"
+                                                        style={{ background: "#fafaf6", border: "1px solid rgba(15,23,42,0.05)" }}>
+                                                        <span className="text-sm mt-0.5">{msg.icon}</span>
+                                                        <p className="text-[11px] text-slate-700 flex-1 leading-relaxed">{msg.text}</p>
+                                                        <span className={clsx("text-[9px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0", badge.cls)}>
+                                                            {badge.label}
+                                                        </span>
+                                                    </motion.div>
+                                                );
+                                            })}
+                                        </AnimatePresence>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Right: Preview */}
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Ad Preview</p>
+                                <AnimatePresence mode="wait">
+                                    {!showPreview ? (
+                                        <motion.div key="loading" exit={{ opacity: 0 }}
+                                            className="h-64 rounded-2xl flex items-center justify-center"
+                                            style={{ background: "#fafaf6", border: "1px dashed rgba(15,23,42,0.12)" }}>
+                                            <div className="text-center">
+                                                <Loader2 size={22} className="text-orange-500 animate-spin mx-auto mb-2" />
+                                                <p className="text-xs text-slate-500">Generating ad previews…</p>
+                                            </div>
+                                        </motion.div>
+                                    ) : (
+                                        <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
+                                            <div className="flex gap-1 mb-3 p-1 rounded-full" style={{ background: "#f4f1ec" }}>
+                                                {(["facebook", "instagram", "story"] as Tab[]).map(tab => (
+                                                    <button key={tab} onClick={() => setActiveTab(tab)}
+                                                        className={clsx("flex-1 py-1.5 px-2 rounded-full text-[11px] font-semibold transition-all capitalize",
+                                                            activeTab === tab ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700")}>
+                                                        {tab === "story" ? "IG Story" : tab === "instagram" ? "Instagram" : "Facebook"}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <span className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Variation</span>
+                                                {(["A", "B", "C"] as Variant[]).map(v => (
+                                                    <button key={v} onClick={() => setActiveVariant(v)}
+                                                        className={clsx(
+                                                            "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all",
+                                                            activeVariant === v
+                                                                ? "var-active"
+                                                                : "text-slate-500 hover:text-slate-700 bg-slate-100/70"
+                                                        )}>
+                                                        Ad {v}
+                                                        {v === "B" && <span className="text-[8px]">★</span>}
+                                                    </button>
+                                                ))}
+                                                <span className={clsx("ml-auto text-[9px] font-semibold px-2 py-0.5 rounded-full", AD_VARIANTS[activeVariant].tagColor)}>
+                                                    {AD_VARIANTS[activeVariant].tag}
+                                                </span>
+                                            </div>
+
+                                            <AnimatePresence mode="wait">
+                                                {activeTab === "facebook" && <FacebookPreview key={`fb-${activeVariant}`} variant={activeVariant} />}
+                                                {activeTab === "instagram" && <InstagramPreview key={`ig-${activeVariant}`} variant={activeVariant} />}
+                                                {activeTab === "story" && <StoryPreview key={`st-${activeVariant}`} variant={activeVariant} />}
+                                            </AnimatePresence>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 flex items-center justify-between border-t" style={{ borderColor: "rgba(15,23,42,0.06)" }}>
+                            <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <p className="text-[10px] text-slate-500">Powered by MetaBuddy AI</p>
+                            </div>
+                            <button onClick={onClose} className="btn-accent px-5 py-2.5 text-xs flex items-center gap-1.5">
+                                Launch campaign <ArrowRight size={13} />
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
+}
+
+// ─── Pill Input ──────────────────────────────────────────────────────────────
+function AdInput({ onGenerate, size = "lg" }: { onGenerate: (text: string) => void; size?: "lg" | "md" }) {
+    const [value, setValue] = useState("");
+    const [phIdx, setPhIdx] = useState(0);
+    const [displayed, setDisplayed] = useState("");
+    const [typing, setTyping] = useState(true);
+
+    useEffect(() => {
+        const target = PLACEHOLDERS[phIdx];
+        let i = typing ? 0 : target.length;
+        const t = setInterval(() => {
+            if (typing) {
+                i++;
+                setDisplayed(target.slice(0, i));
+                if (i >= target.length) { clearInterval(t); setTimeout(() => setTyping(false), 2200); }
+            } else {
+                i--;
+                setDisplayed(target.slice(0, i));
+                if (i <= 0) {
+                    clearInterval(t); setPhIdx(p => (p + 1) % PLACEHOLDERS.length); setTyping(true);
+                }
+            }
+        }, typing ? 42 : 22);
+        return () => clearInterval(t);
+    }, [phIdx, typing]);
+
+    return (
+        <div className={clsx("pill-input flex items-center gap-2",
+            size === "lg" ? "pl-6 pr-2 py-2" : "pl-5 pr-2 py-1.5")}>
+            <Camera size={size === "lg" ? 18 : 16} className="text-slate-400 flex-shrink-0" />
+            <input
+                type="text" value={value} onChange={e => setValue(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && onGenerate(value)}
+                placeholder={displayed}
+                className={clsx("flex-1 outline-none bg-transparent",
+                    size === "lg" ? "text-[15px] py-2.5" : "text-sm py-2")}
+            />
+            <button onClick={() => onGenerate(value)}
+                className={clsx("flex items-center gap-1.5 font-bold transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg",
+                    size === "lg" ? "px-7 py-3.5 text-sm rounded-full" : "px-4 py-2 text-xs rounded-full")}
+                style={{ background: "#fbbf24", color: "#000" }}>
+                Start for free <ArrowRight size={14} />
+            </button>
+        </div>
+    );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+export default function Home() {
+    const [modalOpen, setModalOpen] = useState(false);
+    const [userInput, setUserInput] = useState("");
+    const [agentIdx, setAgentIdx] = useState(0);
+    const [visibleAgents, setVisibleAgents] = useState < { text: string; type: AgentType }[] > ([]);
+
+    const { scrollY } = useScroll();
+    const heroOpacity = useTransform(scrollY, [0, 400], [1, 0.6]);
+
+    const handleGenerate = (text: string) => {
+        setUserInput(text || PLACEHOLDERS[0]);
+        setModalOpen(true);
+    };
+
+    useEffect(() => {
+        const t = setInterval(() => {
+            setVisibleAgents(prev => {
+                const next = [...prev, AGENT_FEED[agentIdx % AGENT_FEED.length]];
+                return next.slice(-6);
+            });
+            setAgentIdx(p => p + 1);
+        }, 2400);
+        return () => clearInterval(t);
+    }, [agentIdx]);
+
+    return (
+        <div className="min-h-screen relative">
+            <div className="warm-bg" />
+            <div className="paper" />
+
+            {/* ── Floating pill navbar ── */}
+            <header className="fixed top-4 left-1/2 -translate-x-1/2 z-40 px-4">
+                <div className="pill-nav rounded-full px-2 py-2 flex items-center gap-1 sm:gap-2">
+                    <a href="#" className="flex items-center gap-1.5 px-3 py-1">
+                        <span className="text-lg font-extrabold tracking-tight text-slate-900">Meta</span>
+                        <span className="accent-text text-lg font-extrabold tracking-tight">Buddy</span>
+                    </a>
+                    <nav className="hidden md:flex items-center gap-1 px-2">
+                        {[
+                            { label: "How it works", href: "#how-it-works" },
+                            { label: "Features", href: "#features" },
+                            { label: "Pricing", href: "#pricing" },
+                        ].map(link => (
+                            <a key={link.label} href={link.href}
+                                className="px-3 py-1.5 rounded-full text-sm text-slate-700 hover:text-slate-900 hover:bg-slate-100/70 transition-colors">
+                                {link.label}
+                            </a>
+                        ))}
+                    </nav>
+                    <div className="hidden sm:flex items-center gap-1 ml-1">
+                        <button className="px-4 py-2 rounded-full text-sm font-medium text-slate-700 hover:bg-slate-100/70 transition-colors">Login</button>
+                        <button onClick={() => handleGenerate("")} className="btn-accent px-4 py-2 text-sm">Get started</button>
+                    </div>
+                    <button onClick={() => handleGenerate("")} className="sm:hidden btn-accent px-3.5 py-1.5 text-xs">Get started</button>
+                </div>
+            </header>
+
+            {/* ── Hero ── */}
+            <motion.section style={{ opacity: heroOpacity }}
+                className="relative pt-36 pb-24 px-4 z-10 overflow-hidden">
+                <div className="max-w-4xl mx-auto text-center relative z-10">
+                    <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }}
+                        className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/50 border border-slate-200/50 backdrop-blur-sm mb-8">
+                        <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Idea to revenue in seconds</span>
+                    </motion.div>
+
+                    <motion.h1 initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.05 }}
+                        className="heading text-5xl sm:text-7xl md:text-8xl leading-[1.0] mb-8">
+                        Start selling from <br />
+                        <span className="serif-italic font-medium text-slate-700">a single idea.</span>
+                    </motion.h1>
+
+                    <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }}
+                        className="text-lg sm:text-xl muted-text mb-12 max-w-2xl mx-auto leading-relaxed">
+                        MetaBuddy builds your campaigns, runs your ads and finds you customers. <br className="hidden sm:block" /> All in minutes.
+                    </motion.p>
+
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.25 }}
+                        className="max-w-xl mx-auto mb-8">
+                        <AdInput onGenerate={handleGenerate} size="lg" />
+                    </motion.div>
+
+                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
+                        className="text-sm text-slate-500">
+                        <span className="font-semibold text-slate-700">Free to start</span> · 30-second setup
+                    </motion.p>
+                </div>
+
+                {/* Fanned ad mockups around centered phone (Nas-style) */}
+                <div className="relative max-w-6xl mx-auto mt-20 h-[600px] sm:h-[680px] hidden sm:block">
+                    {/* Fan: left side cards */}
+                    {[
+                        {
+                            x: -480, y: 80, rot: -18, z: 1, delay: 0.55,
+                            bg: "linear-gradient(160deg,#fef3c7,#fde68a)", label: "Course Launch", sub: "1.2M impressions", price: "3.2x ROAS", btnBg: "#fbbf24", btnText: "Scale campaign", icon: <Sparkles size={16} className="text-amber-700" />
+                        },
+                        {
+                            x: -320, y: 40, rot: -12, z: 2, delay: 0.62,
+                            bg: "linear-gradient(160deg,#ede9fe,#ddd6fe)", label: "Retargeting Ads", sub: "850 clicks · Live", price: "$0.42 CPC", btnBg: "#a78bfa", btnText: "View insights", icon: <Heart size={16} className="text-violet-700" />
+                        },
+                        {
+                            x: -180, y: 14, rot: -6, z: 3, delay: 0.7,
+                            bg: "linear-gradient(160deg,#dcfce7,#bbf7d0)", label: "Winner Ad B", sub: "High engagement", price: "$12.4k sales", btnBg: "#22c55e", btnText: "Boost ad", icon: <Check size={16} className="text-emerald-700" />
+                        },
+                    ].map((c, i) => (
+                        <motion.div key={`L${i}`}
+                            initial={{ opacity: 0, y: 60, rotate: 0, x: c.x }}
+                            animate={{
+                                opacity: 1,
+                                y: [c.y, c.y - 10, c.y],
+                                rotate: c.rot,
+                                x: c.x
+                            }}
+                            transition={{
+                                delay: c.delay,
+                                duration: 4,
+                                repeat: Infinity,
+                                repeatType: "reverse",
+                                ease: "easeInOut",
+                                opacity: { delay: c.delay, duration: 0.9 },
+                                y: { duration: 4, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }
+                            }}
+                            className="float-tile absolute left-1/2 top-0 w-52 overflow-hidden group hover:scale-105 transition-transform cursor-pointer"
+                            style={{ zIndex: c.z, transformOrigin: "center bottom" }}>
+                            <div className="aspect-[9/16]" style={{ background: c.bg }}>
+                                <div className="h-full flex flex-col p-3 text-slate-800">
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                        <div className="w-5 h-5 rounded-full bg-white/70 flex items-center justify-center shadow-sm">{c.icon}</div>
+                                        <span className="text-[9px] font-bold opacity-60 uppercase tracking-widest">MetaBuddy</span>
+                                    </div>
+                                    <div className="flex-1 rounded-xl bg-white/40 mb-2 overflow-hidden relative">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent animate-pulse" />
+                                        <div className="absolute inset-0 flex items-center justify-center opacity-20">
+                                            <Sparkles size={24} />
+                                        </div>
+                                    </div>
+                                    <div className="px-1">
+                                        <p className="font-bold text-[11px] leading-tight mb-0.5">{c.label}</p>
+                                        <p className="text-[9px] opacity-60 mb-2 font-medium">{c.sub}</p>
+                                        <div className="rounded-lg bg-white/90 text-center py-1.5 mb-2 shadow-sm border border-white">
+                                            <p className="text-[10px] font-bold text-slate-900 tracking-tight">{c.price}</p>
+                                        </div>
+                                        <div className="rounded-lg text-center py-2 shadow-md group-hover:filter group-hover:brightness-110 transition-all" style={{ background: c.btnBg }}>
+                                            <p className="text-[9px] font-extrabold text-white uppercase tracking-wider">{c.btnText}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    ))}
+
+                    {/* Fan: right side cards */}
+                    {[
+                        {
+                            x: 180, y: 14, rot: 6, z: 3, delay: 0.7,
+                            bg: "linear-gradient(160deg,#ffe4d9,#ffd4bf)", label: "A/B Test Run", sub: "Variation A vs B", price: "B winning", btnBg: "#ff6b47", btnText: "Kill loser", icon: <Zap size={16} className="text-orange-700" />
+                        },
+                        {
+                            x: 320, y: 40, rot: 12, z: 2, delay: 0.62,
+                            bg: "linear-gradient(160deg,#fce7f3,#fbcfe8)", label: "Creative Gen", sub: "10 new versions", price: "Auto-refresh", btnBg: "#ec4899", btnText: "Refresh ads", icon: <Rocket size={16} className="text-pink-700" />
+                        },
+                        {
+                            x: 480, y: 80, rot: 18, z: 1, delay: 0.55,
+                            bg: "linear-gradient(160deg,#dbeafe,#bfdbfe)", label: "Budget Scaler", sub: "20% daily increase", price: "Optimized", btnBg: "#3b82f6", btnText: "Scaling live", icon: <Brain size={16} className="text-blue-700" />
+                        },
+                    ].map((c, i) => (
+                        <motion.div key={`R${i}`}
+                            initial={{ opacity: 0, y: 60, rotate: 0, x: c.x }}
+                            animate={{
+                                opacity: 1,
+                                y: [c.y, c.y - 12, c.y],
+                                rotate: c.rot,
+                                x: c.x
+                            }}
+                            transition={{
+                                delay: c.delay + 0.2,
+                                duration: 4.5,
+                                repeat: Infinity,
+                                repeatType: "reverse",
+                                ease: "easeInOut",
+                                opacity: { delay: c.delay + 0.2, duration: 0.9 },
+                                y: { duration: 4.5, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }
+                            }}
+                            className="float-tile absolute left-1/2 top-0 w-52 overflow-hidden group hover:scale-105 transition-transform cursor-pointer"
+                            style={{ zIndex: c.z, transformOrigin: "center bottom" }}>
+                            <div className="aspect-[9/16]" style={{ background: c.bg }}>
+                                <div className="h-full flex flex-col p-3 text-slate-800">
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                        <div className="w-5 h-5 rounded-full bg-white/70 flex items-center justify-center shadow-sm">{c.icon}</div>
+                                        <span className="text-[9px] font-bold opacity-60 uppercase tracking-widest">MetaBuddy</span>
+                                    </div>
+                                    <div className="flex-1 rounded-xl bg-white/40 mb-2 overflow-hidden relative">
+                                        <div className="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent animate-pulse" />
+                                        <div className="absolute inset-0 flex items-center justify-center opacity-20">
+                                            <Sparkles size={24} />
+                                        </div>
+                                    </div>
+                                    <div className="px-1">
+                                        <p className="font-bold text-[11px] leading-tight mb-0.5">{c.label}</p>
+                                        <p className="text-[9px] opacity-60 mb-2 font-medium">{c.sub}</p>
+                                        <div className="rounded-lg bg-white/90 text-center py-1.5 mb-2 shadow-sm border border-white">
+                                            <p className="text-[10px] font-bold text-slate-900 tracking-tight">{c.price}</p>
+                                        </div>
+                                        <div className="rounded-lg text-center py-2 shadow-md group-hover:filter group-hover:brightness-110 transition-all" style={{ background: c.btnBg }}>
+                                            <p className="text-[9px] font-extrabold text-white uppercase tracking-wider">{c.btnText}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    ))}
+
+                    {/* Center phone — the hero device */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 80, scale: 0.92 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ delay: 0.85, duration: 1, ease: [0.22, 1, 0.36, 1] }}
+                        className="absolute left-1/2 -translate-x-1/2 top-4"
+                        style={{ zIndex: 10 }}>
+                        <div className="relative w-[300px] h-[610px] rounded-[54px] p-2.5"
+                            style={{
+                                background: "#0a0a0a",
+                                boxShadow: "0 50px 100px rgba(0,0,0,0.4), 0 20px 40px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(255,255,255,0.2)"
+                            }}>
+                            {/* notch */}
+                            <div className="absolute left-1/2 -translate-x-1/2 top-3 w-24 h-6 rounded-full bg-black/95 z-20 flex items-center justify-center gap-1">
+                                <div className="w-1 h-1 rounded-full bg-blue-400/70" />
+                            </div>
+                            {/* screen */}
+                            <div className="relative w-full h-full rounded-[36px] overflow-hidden bg-white">
+                                {/* status bar */}
+                                <div className="flex items-center justify-between px-6 pt-3 pb-2 text-[9px] font-semibold text-slate-700">
+                                    <span>9:41</span>
+                                    <span>● ● ●</span>
+                                </div>
+                                {/* fb-style ad in phone */}
+                                <div className="px-3">
+                                    <div className="flex items-center gap-2 py-2">
+                                        <div className="w-8 h-8 rounded-full border border-slate-100 p-0.5" style={{ background: "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)" }}>
+                                            <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[10px] font-bold text-orange-500">M</div>
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-[11px] font-bold text-slate-900 leading-tight">MetaBuddy Ads</p>
+                                            <p className="text-[9px] text-slate-500 flex items-center gap-1">Sponsored · <Eye size={8} /></p>
+                                        </div>
+                                    </div>
+                                    <p className="text-[11px] text-slate-800 leading-snug mb-3">
+                                        Stop guessing. Start <span className="font-bold text-orange-600 underline decoration-orange-200">selling</span>. AI creates and optimizes your ads while you sleep.
+                                    </p>
+                                    <div className="aspect-square rounded-2xl overflow-hidden relative shadow-inner"
+                                        style={{ background: "linear-gradient(135deg,#f8f9fa 0%,#e9ecef 100%)" }}>
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <div className="w-20 h-20 rounded-3xl bg-white/40 backdrop-blur-xl flex items-center justify-center shadow-lg border border-white/50">
+                                                <Sparkles size={40} className="text-orange-500" />
+                                            </div>
+                                        </div>
+                                        <div className="absolute bottom-3 left-3 right-3 bg-white/95 rounded-xl px-3 py-2.5 shadow-xl border border-slate-100">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-[10px] font-bold text-slate-900">METABUDDY.AI</p>
+                                                    <p className="text-[9px] text-slate-600">The #1 AI Ad Engine</p>
+                                                </div>
+                                                <div className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[9px] font-bold">Shop Now</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between mt-3 px-1">
+                                        <div className="flex -space-x-1">
+                                            <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center ring-2 ring-white"><ThumbsUp size={8} className="text-white fill-white" /></div>
+                                            <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center ring-2 ring-white"><Heart size={8} className="text-white fill-white" /></div>
+                                        </div>
+                                        <span className="text-[9px] font-bold text-slate-500">Learn more →</span>
+                                    </div>
+                                </div>
+                                {/* generating shimmer pill */}
+                                <div className="absolute bottom-5 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-[9px] font-bold text-white flex items-center gap-1.5"
+                                    style={{ background: "linear-gradient(135deg,#ff6b47,#ff8a6b)", boxShadow: "0 8px 20px rgba(255,107,71,0.35)" }}>
+                                    <motion.span animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }}>
+                                        <Sparkles size={10} />
+                                    </motion.span>
+                                    AI generating · variation B
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                </div>
+
+                {/* Mobile fallback: simple stacked card */}
+                <div className="relative max-w-sm mx-auto mt-12 sm:hidden">
+                    <div className="float-tile overflow-hidden">
+                        <div className="aspect-[4/5]" style={{ background: "linear-gradient(135deg,#ffe4d9,#ff9466,#ff6b47)" }}>
+                            <div className="h-full flex flex-col items-center justify-center text-white p-6">
+                                <Sparkles size={28} className="mb-2" />
+                                <p className="font-bold">AI generating your ad</p>
+                                <p className="text-xs opacity-90 mt-1">Variation B · coral theme</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </motion.section>
+
+            {/* ── How it works ── */}
+            <section id="how-it-works" className="py-24 px-4 relative z-10 bg-cream">
+                <FadeInUp className="text-center mb-3">
+                    <span className="section-label accent-text">✦ How it works</span>
+                </FadeInUp>
+                <FadeInUp delay={0.05} className="text-center mb-16">
+                    <h2 className="heading text-4xl sm:text-5xl">
+                        MetaBuddy <span className="serif-italic font-medium text-slate-700">is simple.</span>
+                    </h2>
+                </FadeInUp>
+                <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-3">
+                    {[
+                        { num: "01", icon: <Sparkles size={22} className="text-orange-500" />, title: "Type your idea", desc: "Describe your product or service. No marketing expertise needed." },
+                        { num: "02", icon: <Brain size={22} className="text-violet-500" />, title: "AI builds your ads", desc: "Copy, creatives, and audience targeting — created instantly." },
+                        { num: "03", icon: <Rocket size={22} className="text-rose-500" />, title: "Launch in one click", desc: "Pushed live to Facebook & Instagram automatically." },
+                        { num: "04", icon: <DollarSign size={22} className="text-emerald-500" />, title: "Get customers", desc: "AI optimizes 24/7 — scaling winners, killing losers." },
+                    ].map((step, i) => (
+                        <FadeInUp key={step.num} delay={i * 0.08}>
+                            <div className="soft-card p-6 h-full relative">
+                                <p className="text-xs font-bold text-slate-400 mb-4">{step.num}</p>
+                                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
+                                    style={{ background: "rgba(255,107,71,0.08)" }}>{step.icon}</div>
+                                <h3 className="font-bold text-slate-900 mb-1.5">{step.title}</h3>
+                                <p className="text-sm text-slate-500 leading-relaxed">{step.desc}</p>
+                                {i < 3 && (
+                                    <ChevronRight size={18} className="hidden lg:block absolute top-1/2 -right-3 -translate-y-1/2 text-slate-300" />
+                                )}
+                            </div>
+                        </FadeInUp>
+                    ))}
+                </div>
+            </section>
+
+            {/* ── Features ── */}
+            <section id="features" className="py-28 px-4 relative z-10">
+                <FadeInUp className="text-center mb-3">
+                    <span className="section-label accent-text">✦ Magic Features</span>
+                </FadeInUp>
+                <FadeInUp delay={0.05} className="text-center mb-16">
+                    <h2 className="heading text-4xl sm:text-5xl">
+                        Run ads <span className="serif-italic font-medium text-slate-700">without the headache.</span>
+                    </h2>
+                    <p className="muted-text text-lg max-w-2xl mx-auto mt-4">
+                        No more complicated ads manager. No more clicking 10,000 buttons. MetaBuddy launches ads in 3 clicks.
+                    </p>
+                </FadeInUp>
+                <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {FEATURES.map((f, i) => (
+                        <FadeInUp key={f.title} delay={i * 0.07}>
+                            <div className="soft-card p-7 h-full">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                                        style={{ background: "linear-gradient(135deg,#ffe4d9,#fef3c7)", color: "#e5532f" }}>
+                                        {f.icon}
+                                    </div>
+                                    <span className="text-[11px] font-semibold accent-text">{f.label}</span>
+                                </div>
+                                <h3 className="font-bold text-slate-900 mb-2 text-lg leading-tight">{f.title}</h3>
+                                <p className="text-sm text-slate-500 leading-relaxed">{f.desc}</p>
+                            </div>
+                        </FadeInUp>
+                    ))}
+                </div>
+            </section>
+
+            {/* ── Sell what you ___ section (Nas-style triptych) ── */}
+            <section className="py-28 px-4 relative z-10 bg-peach">
+                <FadeInUp className="text-center mb-16">
+                    <span className="section-label accent-text">✦ For everyone</span>
+                    <h2 className="heading text-4xl sm:text-5xl mt-3">
+                        Built for <span className="serif-italic font-medium text-slate-700">every kind of seller.</span>
+                    </h2>
+                </FadeInUp>
+                <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {[
+                        { tag: "Sell what you know", grad: "linear-gradient(135deg,#fef3c7,#fde68a,#fbbf24)", desc: "Challenges, 1:1 sessions, courses, templates", icon: <Brain size={28} className="text-amber-700" />, label: "COURSES" },
+                        { tag: "Sell what you make", grad: "linear-gradient(135deg,#d1fae5,#a7f3d0,#6ee7b7)", desc: "Jewelry, apparel, home decor", icon: <Sparkles size={28} className="text-emerald-700" />, label: "PRODUCTS" },
+                        { tag: "Sell what you love", grad: "linear-gradient(135deg,#e9d5ff,#c4b5fd,#a78bfa)", desc: "Fitness classes, networking nights, dance classes", icon: <Heart size={28} className="text-purple-700" />, label: "SERVICES" },
+                    ].map((c, i) => (
+                        <FadeInUp key={c.tag} delay={i * 0.1}>
+                            <div className="soft-card overflow-hidden h-full flex flex-col group">
+                                <div className="aspect-[4/3] flex items-center justify-center relative overflow-hidden" style={{ background: c.grad }}>
+                                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10" />
+                                    <div className="relative z-10 w-32 h-44 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-2xl flex flex-col p-4 transform group-hover:scale-110 transition-transform duration-500">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="w-6 h-6 rounded-full bg-white/80 flex items-center justify-center">{c.icon}</div>
+                                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                        </div>
+                                        <div className="flex-1 space-y-2">
+                                            <div className="h-1.5 w-full bg-white/60 rounded-full" />
+                                            <div className="h-1.5 w-2/3 bg-white/60 rounded-full" />
+                                            <div className="h-1.5 w-1/2 bg-white/60 rounded-full" />
+                                        </div>
+                                        <div className="mt-auto h-6 w-full bg-slate-900 rounded-lg shadow-lg" />
+                                    </div>
+                                </div>
+                                <div className="p-8">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2 block">{c.label}</span>
+                                    <h3 className="font-bold text-slate-900 text-xl mb-3">{c.tag}</h3>
+                                    <p className="text-sm text-slate-500 leading-relaxed font-medium">{c.desc}</p>
+                                </div>
+                            </div>
+                        </FadeInUp>
+                    ))}
+                </div>
+            </section>
+
+            {/* ── Live Agent Activity ── */}
+            <section className="py-28 px-4 relative z-10">
+                <FadeInUp className="text-center mb-3">
+                    <span className="section-label accent-text">✦ Magic Agents</span>
+                </FadeInUp>
+                <FadeInUp delay={0.05} className="text-center mb-12">
+                    <h2 className="heading text-4xl sm:text-5xl">
+                        AI working <span className="serif-italic font-medium text-slate-700">24/7 for you.</span>
+                    </h2>
+                    <p className="muted-text text-lg max-w-2xl mx-auto mt-4">
+                        Watch your agents optimize campaigns in real time — pause losers, scale winners, refresh creatives.
+                    </p>
+                </FadeInUp>
+                <div className="max-w-2xl mx-auto">
+                    <div className="soft-card overflow-hidden">
+                        <div className="flex items-center gap-2 px-5 py-3.5 border-b" style={{ borderColor: "rgba(15,23,42,0.06)", background: "#fafaf6" }}>
+                            <div className="w-2.5 h-2.5 rounded-full bg-rose-400" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                            <span className="ml-2 text-[11px] text-slate-500 font-mono">metabuddy-agent · live</span>
+                            <div className="ml-auto flex items-center gap-1.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="text-[10px] text-emerald-600 font-semibold">active</span>
+                            </div>
+                        </div>
+                        <div className="px-5 py-4 min-h-[280px] space-y-2">
+                            <AnimatePresence>
+                                {visibleAgents.map((msg, i) => {
+                                    const badge = AGENT_BADGE[msg.type];
+                                    const isLatest = i === visibleAgents.length - 1;
+                                    return (
+                                        <motion.div key={`${msg.text}-${i}`}
+                                            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                                            transition={{ duration: 0.35 }}
+                                            className="flex items-center gap-2.5 py-2 border-b last:border-0"
+                                            style={{ borderColor: "rgba(15,23,42,0.05)" }}>
+                                            <span className={clsx("text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0", badge.cls)}>
+                                                {badge.label}
+                                            </span>
+                                            <span className={clsx("text-xs flex-1 font-mono", isLatest ? "text-slate-800" : "text-slate-400")}>
+                                                {msg.text}
+                                            </span>
+                                            {isLatest && <span className="inline-block w-1.5 h-3.5 bg-orange-400 animate-pulse rounded-sm" />}
+                                        </motion.div>
+                                    );
+                                })}
+                            </AnimatePresence>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* ── Stats ── */}
+            <section className="py-32 px-4 relative z-10 bg-[#fafafa] overflow-hidden">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+                <FadeInUp className="text-center mb-16">
+                    <h2 className="heading text-6xl sm:text-8xl tracking-tight">
+                        <span style={{ background: "linear-gradient(135deg,#0f172a,#ff6b47,#fbbf24)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                            350,000+
+                        </span>
+                    </h2>
+                    <p className="muted-text text-xl mt-6">Campaigns launched on MetaBuddy and counting…</p>
+                </FadeInUp>
+                <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    {[
+                        { value: 3.2, suffix: "x", label: "Average ROAS", icon: <TrendingUp size={20} /> },
+                        { value: 40, suffix: "%", label: "Lower CPC", icon: <Zap size={20} /> },
+                        { value: 2, suffix: " min", label: "Time to live", icon: <Rocket size={20} /> },
+                    ].map((stat, i) => (
+                        <FadeInUp key={stat.label} delay={i * 0.1}>
+                            <div className="soft-card p-10 text-center group hover:bg-white transition-all duration-500">
+                                <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center mx-auto mb-6 text-slate-400 group-hover:text-orange-500 transition-colors">
+                                    {stat.icon}
+                                </div>
+                                <div className="text-5xl font-bold text-slate-900 mb-3 tracking-tight">
+                                    <Counter target={stat.value} suffix={stat.suffix} />
+                                </div>
+                                <p className="text-slate-500 text-sm font-bold uppercase tracking-[0.15em]">{stat.label}</p>
+                            </div>
+                        </FadeInUp>
+                    ))}
+                </div>
+            </section>
+
+            {/* ── Testimonials ── */}
+            <section className="py-28 px-4 relative z-10">
+                <FadeInUp className="text-center mb-16">
+                    <span className="section-label accent-text">✦ Stories</span>
+                    <h2 className="heading text-4xl sm:text-5xl mt-3">
+                        Stories from people who <span className="serif-italic font-medium text-slate-700">started.</span>
+                    </h2>
+                </FadeInUp>
+                <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {[
+                        { name: "Morena V.", role: "Yoga Teacher", quote: "Just 12 hours in and already 2 leads. My third ad is performing the best — proof that showing up as yourself works.", grad: "linear-gradient(135deg,#fef3c7,#fbbf24)" },
+                        { name: "Nate G.", role: "Solopreneur", quote: "I've run my own business for 17 years. MetaBuddy has been a game changer for adding another aspect to my marketing.", grad: "linear-gradient(135deg,#e9d5ff,#c4b5fd)" },
+                        { name: "Dominique", role: "Coach", quote: "Never got a lead in 2 years on the old platform. Got 5 leads in 2 days on MetaBuddy.", grad: "linear-gradient(135deg,#d1fae5,#86efac)" },
+                    ].map((t, i) => (
+                        <FadeInUp key={t.name} delay={i * 0.1}>
+                            <div className="soft-card p-6 h-full flex flex-col">
+                                <div className="flex items-center gap-1 mb-3">
+                                    {[...Array(5)].map((_, j) => <Star key={j} size={13} className="text-amber-400 fill-amber-400" />)}
+                                </div>
+                                <p className="text-sm text-slate-700 leading-relaxed flex-1 mb-5">"{t.quote}"</p>
+                                <div className="flex items-center gap-3 pt-4 border-t" style={{ borderColor: "rgba(15,23,42,0.06)" }}>
+                                    <div className="w-10 h-10 rounded-full" style={{ background: t.grad }} />
+                                    <div>
+                                        <p className="text-sm font-semibold text-slate-900">{t.name}</p>
+                                        <p className="text-xs text-slate-500">{t.role}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </FadeInUp>
+                    ))}
+                </div>
+            </section>
+
+            {/* ── Pricing ── */}
+            <section id="pricing" className="py-28 px-4 relative z-10 bg-sage">
+                <FadeInUp className="text-center mb-3">
+                    <span className="section-label accent-text">✦ Pricing</span>
+                </FadeInUp>
+                <FadeInUp delay={0.05} className="text-center mb-16">
+                    <h2 className="heading text-4xl sm:text-5xl">
+                        Simple, <span className="serif-italic font-medium text-slate-700">honest pricing.</span>
+                    </h2>
+                    <p className="muted-text text-lg mt-4">Start free. Scale when you're ready.</p>
+                </FadeInUp>
+                <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {PRICING.map((plan, i) => (
+                        <FadeInUp key={plan.name} delay={i * 0.1}>
+                            <div className={clsx("soft-card p-7 h-full flex flex-col relative",
+                                plan.featured && "border-2")}
+                                style={plan.featured ? {
+                                    borderColor: "rgba(255,107,71,0.4)",
+                                    boxShadow: "0 0 0 4px rgba(255,107,71,0.08), 0 14px 30px rgba(15,23,42,0.08)"
+                                } : {}}>
+                                {plan.featured && (
+                                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 btn-accent px-3 py-1 text-[10px]">
+                                        Most Popular
+                                    </div>
+                                )}
+                                <div className="mb-6">
+                                    <h3 className="font-bold text-slate-900 text-base mb-1">{plan.name}</h3>
+                                    <p className="text-slate-500 text-xs mb-4">{plan.desc}</p>
+                                    <div className="flex items-baseline gap-1">
+                                        <span className="text-4xl font-bold text-slate-900">{plan.price}</span>
+                                        <span className="text-slate-500 text-sm">{plan.period}</span>
+                                    </div>
+                                </div>
+                                <ul className="space-y-2.5 flex-1 mb-6">
+                                    {plan.features.map(f => (
+                                        <li key={f} className="flex items-center gap-2 text-xs text-slate-700">
+                                            <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+                                                style={{ background: "rgba(255,107,71,0.12)" }}>
+                                                <Check size={9} className="text-orange-600" />
+                                            </div>
+                                            {f}
+                                        </li>
+                                    ))}
+                                </ul>
+                                <button onClick={() => handleGenerate("")}
+                                    className={clsx("w-full py-3 rounded-full text-xs font-semibold transition-all",
+                                        plan.featured ? "btn-accent" : "bg-slate-900 text-white hover:bg-slate-700")}>
+                                    {plan.cta}
+                                </button>
+                            </div>
+                        </FadeInUp>
+                    ))}
+                </div>
+            </section>
+
+            {/* ── Final CTA ── */}
+            <section className="py-32 px-4 relative z-10 overflow-hidden">
+                <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[500px] rounded-full"
+                        style={{ background: "radial-gradient(ellipse,rgba(255,107,71,0.18),transparent 70%)", filter: "blur(80px)" }} />
+                </div>
+                <FadeInUp className="relative z-10 max-w-2xl mx-auto text-center">
+                    <h2 className="heading text-4xl sm:text-5xl mb-5">
+                        Life is too short <br />
+                        <span className="serif-italic font-medium text-slate-700">to do ads the hard way.</span>
+                    </h2>
+                    <p className="muted-text mb-10 text-lg">
+                        Type your idea — watch AI build your entire campaign in seconds.
+                    </p>
+                    <AdInput onGenerate={handleGenerate} size="lg" />
+                    <p className="text-sm text-slate-500 mt-5">
+                        Trusted by <span className="font-semibold text-slate-700">2,400+ businesses</span> · No credit card required
+                    </p>
+                </FadeInUp>
+            </section>
+
+            {/* ── Footer ── */}
+            <footer className="pt-20 pb-10 px-4 relative z-10" style={{ background: "#fff8f1", borderTop: "1px solid rgba(15,23,42,0.05)" }}>
+                <div className="max-w-6xl mx-auto">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-8 pb-12">
+                        <div className="col-span-2">
+                            <div className="flex items-center gap-1 mb-3">
+                                <span className="text-xl font-extrabold tracking-tight text-slate-900">Meta</span>
+                                <span className="accent-text text-xl font-extrabold tracking-tight">Buddy</span>
+                            </div>
+                            <p className="text-sm text-slate-500 max-w-xs">AI-powered Meta ads. Create, launch, and optimize in seconds.</p>
+                        </div>
+                        {[
+                            { title: "Features", links: ["Magic Copy", "Magic Preview", "Magic Launch", "Magic Agents"] },
+                            { title: "Company", links: ["About", "Pricing", "Blog", "Contact"] },
+                            { title: "Resources", links: ["Help Center", "Privacy", "Terms", "API"] },
+                        ].map(col => (
+                            <div key={col.title}>
+                                <p className="text-[11px] font-bold text-orange-600 uppercase tracking-widest mb-3">{col.title}</p>
+                                <ul className="space-y-2">
+                                    {col.links.map(l => (
+                                        <li key={l}><a href="#" className="text-sm text-slate-600 hover:text-slate-900 transition-colors">{l}</a></li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="divider-soft" />
+                    <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+                        <p className="text-xs text-slate-500">© 2026 MetaBuddy. All rights reserved.</p>
+                        <p className="text-xs text-slate-400">Made with ✦ for entrepreneurs</p>
+                    </div>
+                </div>
+            </footer>
+
+            <AdModal open={modalOpen} onClose={() => setModalOpen(false)} userInput={userInput} />
+        </div>
+    );
+}
