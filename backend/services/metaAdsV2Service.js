@@ -273,8 +273,28 @@ async function saveConnectionFromOAuth(userId, code) {
   );
 
   account.accessToken = accessToken;
-  await syncAdAccounts(userId, account);
-  await logAudit(userId, 'meta_connected', { connectionId: account._id, actorType: 'user', metaUserId: profile.id });
+  let adAccountSync = { success: true, count: 0, error: '' };
+  try {
+    const adAccounts = await syncAdAccounts(userId, account);
+    adAccountSync.count = adAccounts.length;
+    account.syncHealthStatus = 'healthy';
+    account.lastErrorMessage = '';
+    await account.save();
+  } catch (err) {
+    adAccountSync = { success: false, count: 0, error: err.message };
+    account.syncHealthStatus = 'warning';
+    account.lastErrorAt = new Date();
+    account.lastErrorMessage = err.message;
+    await account.save();
+  }
+
+  await logAudit(userId, 'meta_connected', {
+    connectionId: account._id,
+    actorType: 'user',
+    metaUserId: profile.id,
+    adAccountSync,
+  });
+  account.adAccountSync = adAccountSync;
   return account;
 }
 

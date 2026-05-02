@@ -51,9 +51,17 @@ router.get('/oauth/callback', async (req, res) => {
     if (!code || !state) return res.redirect(`${FRONTEND_URL}/dashboard?meta_error=missing_code`);
 
     const decoded = jwt.verify(state, process.env.JWT_SECRET);
-    await saveConnectionFromOAuth(decoded.userId, code);
-    res.redirect(`${FRONTEND_URL}/dashboard?meta_connected=true`);
+    const connection = await saveConnectionFromOAuth(decoded.userId, code);
+    const warning = connection.adAccountSync?.success === false
+      ? `&meta_warning=${encodeURIComponent(connection.adAccountSync.error || 'ad_account_sync_failed')}`
+      : '';
+    res.redirect(`${FRONTEND_URL}/dashboard?meta_connected=true${warning}`);
   } catch (err) {
+    console.error('Meta OAuth callback failed:', {
+      message: err.message,
+      statusCode: err.statusCode,
+      metaError: err.metaError,
+    });
     res.redirect(`${FRONTEND_URL}/dashboard?meta_error=${encodeURIComponent(err.message)}`);
   }
 });
