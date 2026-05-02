@@ -262,12 +262,21 @@ async function saveConnectionFromOAuth(userId, code) {
   const account = await MetaAccount.findOneAndUpdate(
     { userId, metaUserId: profile.id },
     {
-      metaUserId: profile.id,
-      name: profile.name || '',
-      ...encryptMetaToken(accessToken),
-      tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
-      tokenStatus: 'valid',
-      isValid: true,
+      $set: {
+        metaUserId: profile.id,
+        name: profile.name || '',
+        ...encryptMetaToken(accessToken),
+        tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
+        tokenStatus: 'valid',
+        isValid: true,
+        isActive: true,
+        disconnectReason: '',
+      },
+      $unset: {
+        deletedAt: '',
+        disconnectedAt: '',
+        lastErrorAt: '',
+      },
     },
     { upsert: true, new: true }
   );
