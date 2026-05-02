@@ -88,6 +88,12 @@ router.get('/diagnostics', auth, async (req, res) => {
       connectionId: req.query.connectionId,
     }));
   } catch (err) {
+    console.error('Meta diagnostics failed:', {
+      userId: req.userId,
+      message: err.message,
+      statusCode: err.statusCode,
+      metaError: err.metaError,
+    });
     res.status(err.statusCode || 500).json({
       error: err.message,
       metaError: err.metaError,

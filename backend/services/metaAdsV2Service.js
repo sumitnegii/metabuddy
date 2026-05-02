@@ -326,7 +326,35 @@ function permissionStatusMap(permissions = []) {
 }
 
 async function diagnoseMetaConnection(userId, options = {}) {
-  const account = await getConnection(userId, options.connectionId);
+  let account;
+  try {
+    account = await getConnection(userId, options.connectionId);
+  } catch (err) {
+    const connections = await MetaAccount.find({ userId, isActive: true }).sort({ createdAt: -1 });
+    return {
+      ok: false,
+      connected: false,
+      error: err.message,
+      apiVersion: META_API_VERSION,
+      callbackUrl: `${BACKEND_URL}/api/meta-ads-v2/oauth/callback`,
+      frontendUrl: FRONTEND_URL,
+      requiredScopes: SCOPES,
+      connectionCount: connections.length,
+      connections: connections.map((connection) => ({
+        id: connection._id,
+        metaUserId: connection.metaUserId,
+        name: connection.name || '',
+        tokenStatus: connection.tokenStatus,
+        isValid: connection.isValid,
+        syncHealthStatus: connection.syncHealthStatus,
+        lastErrorMessage: connection.lastErrorMessage || '',
+        createdAt: connection.createdAt,
+      })),
+      hint: connections.length
+        ? 'A Meta connection exists for this MetaBuddy user but its token cannot be used. Reconnect Meta after confirming META_TOKEN_ENCRYPTION_KEY is stable.'
+        : 'No Meta connection exists for this MetaBuddy user. Click Connect Meta while logged in as this same MetaBuddy user.',
+    };
+  }
   const [profile, permissionsRaw, adAccountsRaw, pagesRaw] = await Promise.allSettled([
     graphGet('/me', account.accessToken, { fields: 'id,name' }),
     graphGet('/me/permissions', account.accessToken),
@@ -370,6 +398,7 @@ async function diagnoseMetaConnection(userId, options = {}) {
 
   const diagnostics = {
     ok: missingScopes.length === 0 && adAccounts.length > 0,
+    connected: true,
     apiVersion: META_API_VERSION,
     callbackUrl: `${BACKEND_URL}/api/meta-ads-v2/oauth/callback`,
     frontendUrl: FRONTEND_URL,
