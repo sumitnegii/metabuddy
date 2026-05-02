@@ -12,6 +12,10 @@ app.use(express.json({ limit: '10mb' }));
 app.use(cors({ origin: true, credentials: true }));
 
 // Health check
+app.get('/', (_req, res) => {
+  res.json({ status: 'ok', service: 'marketing-copilot', health: '/api/health' });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'marketing-copilot', ts: new Date().toISOString() });
 });

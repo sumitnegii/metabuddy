@@ -367,6 +367,22 @@ router.post('/campaigns/create-full', auth, async (req, res) => {
     const result = await createSimpleMetaAdCampaign(req.userId, req.body);
     res.status(201).json({ success: true, ...result });
   } catch (err) {
+    console.error('Meta create-full failed:', {
+      message: err.message,
+      statusCode: err.statusCode,
+      metaError: err.metaError,
+      bodySummary: {
+        adType: req.body?.adType,
+        objective: req.body?.objective,
+        hasPageId: Boolean(req.body?.pageId),
+        hasWebsiteUrl: Boolean(req.body?.websiteUrl),
+        hasImageUrl: Boolean(req.body?.imageUrl),
+        hasImageHash: Boolean(req.body?.imageHash),
+        hasVideoUrl: Boolean(req.body?.videoUrl),
+        hasVideoId: Boolean(req.body?.videoId),
+        carouselCardCount: Array.isArray(req.body?.carouselCards) ? req.body.carouselCards.length : 0,
+      },
+    });
     res.status(err.statusCode || 500).json({
       error: err.message,
       metaError: err.metaError,
