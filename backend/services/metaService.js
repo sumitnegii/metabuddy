@@ -85,6 +85,7 @@ async function createAdSet(campaignId, name, dailyBudget = 1000, targeting = {})
     campaign_id: campaignId,
     status: 'PAUSED',
     daily_budget: dailyBudget,
+    is_adset_budget_sharing_enabled: false,
     billing_event: 'IMPRESSIONS',
     optimization_goal: 'LINK_CLICKS',
     bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
@@ -202,4 +203,3 @@ module.exports = {
   updateAdStatus,
   // ... exported other existing methods if needed ...
 };
-
