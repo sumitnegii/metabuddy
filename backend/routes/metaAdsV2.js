@@ -385,6 +385,7 @@ router.post('/campaigns/create-full', auth, async (req, res) => {
       message: err.message,
       statusCode: err.statusCode,
       metaError: err.metaError,
+      metaPreflight: err.metaPreflight,
       bodySummary: {
         adType: req.body?.adType,
         objective: req.body?.objective,
@@ -400,8 +401,11 @@ router.post('/campaigns/create-full', auth, async (req, res) => {
     res.status(err.statusCode || 500).json({
       error: err.message,
       metaError: err.metaError,
+      metaPreflight: err.metaPreflight,
       hint: err.metaError
         ? 'Meta rejected the ad creation request. Check Page ID ownership, destination URL, image URL/hash, budget, billing, and ads_management permission.'
+        : err.metaPreflight
+          ? 'Meta preflight failed before creating the ad. Reconnect Meta with ads permissions and confirm the same Facebook user can access the selected ad account and Page.'
         : undefined,
     });
   }

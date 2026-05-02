@@ -334,6 +334,65 @@ function permissionStatusMap(permissions = []) {
   }, {});
 }
 
+async function assertMetaCreatePreflight({ account, adAccount, pageId }) {
+  const [permissionsRaw, adAccountsRaw, pageRaw] = await Promise.allSettled([
+    graphGet('/me/permissions', account.accessToken),
+    graphGet('/me/adaccounts', account.accessToken, {
+      fields: 'id,name,account_status,user_tasks',
+      limit: 100,
+    }),
+    pageId ? graphGet(`/${pageId}`, account.accessToken, { fields: 'id,name,tasks' }) : Promise.resolve(null),
+  ]);
+
+  const permissions = permissionsRaw.status === 'fulfilled' ? permissionsRaw.value.data || [] : [];
+  const permissionMap = permissionStatusMap(permissions);
+  const missingScopes = ['ads_management', 'ads_read', 'business_management']
+    .filter((scope) => permissionMap[scope] !== 'granted');
+
+  const adAccounts = adAccountsRaw.status === 'fulfilled' ? adAccountsRaw.value.data || [] : [];
+  const selectedAccount = adAccounts.find((item) => item.id === adAccount.accountId);
+  const accountTasks = selectedAccount?.user_tasks || [];
+  const canManageSelectedAccount = accountTasks.length === 0 || accountTasks.some((task) => ['ADVERTISE', 'MANAGE'].includes(task));
+
+  const page = pageRaw.status === 'fulfilled' ? pageRaw.value : null;
+  const failures = [];
+  if (permissionsRaw.status === 'rejected') failures.push(`Could not verify token permissions: ${permissionsRaw.reason.message}`);
+  if (adAccountsRaw.status === 'rejected') failures.push(`Could not load ad accounts: ${adAccountsRaw.reason.message}`);
+  if (pageRaw.status === 'rejected') failures.push(`Could not access Page ${pageId}: ${pageRaw.reason.message}`);
+  if (missingScopes.length) failures.push(`Missing granted permissions: ${missingScopes.join(', ')}`);
+  if (!selectedAccount) failures.push(`Connected user token cannot see selected ad account ${adAccount.accountId}`);
+  if (selectedAccount && !canManageSelectedAccount) failures.push(`Connected user does not have ad management tasks on ${adAccount.accountId}`);
+  if (pageId && !page) failures.push(`Connected user token cannot access Page ${pageId}`);
+
+  if (failures.length) {
+    const error = new Error(failures.join(' | '));
+    error.statusCode = 400;
+    error.metaPreflight = {
+      missingScopes,
+      selectedAdAccountId: adAccount.accountId,
+      visibleAdAccounts: adAccounts.map((item) => ({
+        id: item.id,
+        name: item.name || '',
+        accountStatus: item.account_status,
+        userTasks: item.user_tasks || [],
+      })),
+      page: page ? { id: page.id, name: page.name || '', tasks: page.tasks || [] } : null,
+      rawFailures: {
+        permissions: permissionsRaw.status === 'rejected' ? permissionsRaw.reason.message : '',
+        adAccounts: adAccountsRaw.status === 'rejected' ? adAccountsRaw.reason.message : '',
+        page: pageRaw.status === 'rejected' ? pageRaw.reason.message : '',
+      },
+    };
+    throw error;
+  }
+
+  return {
+    permissions,
+    selectedAdAccount,
+    page,
+  };
+}
+
 async function diagnoseMetaConnection(userId, options = {}) {
   let account;
   try {
@@ -1933,7 +1992,9 @@ async function createSimpleMetaAdCampaign(userId, input = {}) {
   const ageMax = Math.max(ageMin, Math.min(65, Number(input.ageMax || 65)));
 
   if (!pageId && !existingPostId) throw new Error('pageId is required unless existingPostId is provided');
-  if (!existingPostId) await graphGet(`/${pageId}`, account.accessToken, { fields: 'id,name' });
+  if (!existingPostId) {
+    await assertMetaCreatePreflight({ account, adAccount, pageId });
+  }
 
   let imageHash = String(input.imageHash || '').trim();
   let videoId = String(input.videoId || '').trim();
