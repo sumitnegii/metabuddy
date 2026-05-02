@@ -40,10 +40,10 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('✅ MongoDB connected');
     
-    // 🔥 Start the Automated Optimization Loop (Every 6 hours)
-    // For demo purposes, we run it once immediately and then every 6 hours.
-    trackAndOptimize();
-    setInterval(trackAndOptimize, 6 * 60 * 60 * 1000);
+    if (process.env.LEGACY_OPTIMIZATION_LOOP_ENABLED === 'true') {
+      trackAndOptimize();
+      setInterval(trackAndOptimize, 6 * 60 * 60 * 1000);
+    }
 
     if (process.env.META_ADS_V2_WORKER_ENABLED === 'true') {
       startMetaAdsV2SyncWorker();

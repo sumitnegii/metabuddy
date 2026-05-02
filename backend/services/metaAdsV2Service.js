@@ -272,6 +272,7 @@ async function saveConnectionFromOAuth(userId, code) {
     { upsert: true, new: true }
   );
 
+  account.accessToken = accessToken;
   await syncAdAccounts(userId, account);
   await logAudit(userId, 'meta_connected', { connectionId: account._id, actorType: 'user', metaUserId: profile.id });
   return account;
