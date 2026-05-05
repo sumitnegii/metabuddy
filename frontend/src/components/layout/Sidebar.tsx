@@ -21,6 +21,7 @@ const navItems = [
   { label: "Home", href: "/dashboard", icon: LayoutDashboard },
   { label: "Create", href: "/generate", icon: Wand2 },
   { label: "Ad Tool", href: "/ad-creator", icon: Images },
+  { label: "Ad Creative", href: "/ad-creatives", icon: FileText },
   { label: "Campaigns", href: "/campaigns", icon: Megaphone },
   { label: "Agents", href: "/contacts", icon: Users },
   { label: "Content", href: "/content", icon: FileText },

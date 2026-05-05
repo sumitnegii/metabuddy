@@ -3,6 +3,7 @@ const auth = require('../middleware/auth');
 const AgentLog = require('../models/AgentLog');
 const Agent = require('../models/Agent');
 const AgentJob = require('../models/AgentJob');
+const { runAdCreativePipeline, runAdCreativeStep } = require('../services/agents/adCreativePipeline');
 
 const AGENT_DIRECTORY = [
   { templateId: 'copy-pro', name: 'Copywriter Pro', role: 'Copywriting', costPerTask: 0.15, performanceScore: 98, skills: ['Direct Response', 'Storytelling'], avatar: '✍️', bio: 'Expert at writing high-converting Meta ad copy.', model: 'claude-sonnet-4-5' },
@@ -74,6 +75,31 @@ router.get('/team', auth, async (req, res) => {
     res.json(team.map(serializeAgent));
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/ad-creatives/run', auth, async (req, res) => {
+  try {
+    const result = await runAdCreativePipeline({
+      userId: req.userId,
+      prompt: req.body?.prompt,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/run-step', auth, async (req, res) => {
+  try {
+    const result = await runAdCreativeStep({
+      userId: req.userId,
+      step: req.body?.step,
+      data: req.body?.data,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

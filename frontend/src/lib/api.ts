@@ -105,6 +105,19 @@ export const api = {
   getAgentDirectory: () => req("/agents/directory"),
   hireAgent: (templateId: string) => req("/agents/hire", { method: "POST", body: JSON.stringify({ templateId }) }),
   getAgentTeam: () => req("/agents/team"),
+  runAdCreativeAgents: (b: { prompt: string }) =>
+    req("/agents/ad-creatives/run", { method: "POST", body: JSON.stringify(b) }),
+  runAdCreativeAgentStep: (b: { step: number; data: Record<string, unknown> }) =>
+    req("/agents/run-step", { method: "POST", body: JSON.stringify(b) }),
+  predictAdPerformance: (b: { ad_text: string; audience?: string; sector?: string; headline?: string; cta?: string }) =>
+    req("/mcp/analytics/predict", { method: "POST", body: JSON.stringify(b) }),
+  storeAdCreativeMemory: (b: Record<string, unknown>) =>
+    req("/mcp/memory/store", { method: "POST", body: JSON.stringify(b) }),
+  getAdCreativeHistory: (sector?: string, limit?: number) =>
+    req(`/mcp/memory/history${sector || limit ? `?${new URLSearchParams({ ...(sector ? { sector } : {}), ...(limit ? { limit: String(limit) } : {}) }).toString()}` : ""}`),
+  getMcpCostSummary: () => req("/mcp/cost/summary"),
+  getCompetitorIdeas: (b: { sector?: string; audience?: string }) =>
+    req("/mcp/competitor/ideas", { method: "POST", body: JSON.stringify(b) }),
   updateAgentBudget: (id: string, budgetAllocated: number) =>
     req(`/agents/${id}/budget`, { method: "PUT", body: JSON.stringify({ budgetAllocated }) }),
   updateAgentStatus: (id: string, status: "idle" | "paused") =>

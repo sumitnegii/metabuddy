@@ -28,6 +28,8 @@ app.use('/api/meta', require('./routes/meta'));
 app.use('/api/meta-ads-v2', require('./routes/metaAdsV2'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/agents', require('./routes/agents'));
+app.use('/api/agent', require('./routes/agents'));
+app.use('/api/mcp', require('./routes/mcp'));
 app.use('/api/campaign-drafts', require('./routes/campaignDrafts'));
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));

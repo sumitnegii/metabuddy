@@ -15,5 +15,7 @@ async function generateCreative(campaign, content) {
   return extractJSON(responseText);
 }
 
+// agent will create and post the idea's
+
 
 module.exports = { generateCreative };

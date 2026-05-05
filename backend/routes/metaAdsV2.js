@@ -122,7 +122,14 @@ router.post('/sync', auth, async (req, res) => {
     });
     res.json({ success: true, ...result, overview: await listOverview(req.userId) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({
+      error: err.message,
+      metaError: err.metaError,
+      reconnectRequired: Boolean(err.reconnectRequired),
+      hint: err.reconnectRequired
+        ? 'Facebook invalidated the saved access token. Reconnect Meta to generate a fresh token.'
+        : undefined,
+    });
   }
 });
 
@@ -212,8 +219,11 @@ router.put('/campaigns/:campaignId/status', auth, async (req, res) => {
     res.status(err.statusCode || 500).json({
       error: err.message,
       metaError: err.metaError,
+      reconnectRequired: Boolean(err.reconnectRequired),
       hint: err.metaError
-        ? 'Meta rejected the status change. Check campaign delivery restrictions, account permissions, billing, and policy state.'
+        ? (err.reconnectRequired
+          ? 'Facebook invalidated the saved access token. Reconnect Meta to generate a fresh token.'
+          : 'Meta rejected the status change. Check campaign delivery restrictions, account permissions, billing, and policy state.')
         : undefined,
     });
   }

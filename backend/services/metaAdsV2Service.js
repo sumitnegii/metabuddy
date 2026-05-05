@@ -52,6 +52,27 @@ function normalizeActId(accountId) {
   return accountId.startsWith('act_') ? accountId : `act_${accountId}`;
 }
 
+function isInvalidMetaTokenError(err) {
+  const code = Number(err?.metaError?.code);
+  const subcode = Number(err?.metaError?.error_subcode);
+  const message = String(err?.message || err?.metaError?.message || '').toLowerCase();
+  return code === 190 || subcode === 460 || message.includes('validating access token') || message.includes('session has been invalidated');
+}
+
+async function markConnectionTokenRevoked(userId, connectionId, message) {
+  if (!connectionId) return;
+  await MetaAccount.updateOne(
+    { userId, _id: connectionId },
+    {
+      isValid: false,
+      tokenStatus: 'revoked',
+      syncHealthStatus: 'error',
+      lastErrorAt: new Date(),
+      lastErrorMessage: message || 'Meta token revoked',
+    }
+  );
+}
+
 function buildOAuthUrl(userId) {
   ensureMetaConfig();
   const redirectUri = `${BACKEND_URL}/api/meta-ads-v2/oauth/callback`;
@@ -323,7 +344,16 @@ async function getConnection(userId, connectionId) {
     account.tokenStatus = 'expiring_soon';
     await account.save();
   }
-  account.accessToken = decryptMetaToken(account);
+  try {
+    account.accessToken = decryptMetaToken(account);
+  } catch (err) {
+    account.tokenStatus = 'invalid';
+    account.isValid = false;
+    account.syncHealthStatus = 'needs_reconnect';
+    account.lastSyncError = err.message;
+    await account.save();
+    throw new Error('Saved Meta connection cannot be decrypted. Please reconnect Meta.');
+  }
   return account;
 }
 
@@ -509,7 +539,18 @@ async function diagnoseMetaConnection(userId, options = {}) {
 
 async function syncAdAccounts(userId, existingConnection) {
   const account = existingConnection || await getConnection(userId);
-  if (!account.accessToken) account.accessToken = decryptMetaToken(account);
+  if (!account.accessToken) {
+    try {
+      account.accessToken = decryptMetaToken(account);
+    } catch (err) {
+      account.tokenStatus = 'invalid';
+      account.isValid = false;
+      account.syncHealthStatus = 'needs_reconnect';
+      account.lastSyncError = err.message;
+      await account.save();
+      throw new Error('Saved Meta connection cannot be decrypted. Please reconnect Meta.');
+    }
+  }
   const accounts = await fetchAll('/me/adaccounts', account.accessToken, {
     fields: 'id,name,currency,timezone_name,account_status',
   });
@@ -978,8 +1019,13 @@ async function syncCampaigns(userId, options = {}) {
     syncJob.error = err.message;
     syncJob.nextRetryAt = new Date(Date.now() + Math.min(60, (syncJob.retryCount || 0) + 1) * 60 * 1000);
     await syncJob.save();
+    if (isInvalidMetaTokenError(err)) {
+      await markConnectionTokenRevoked(userId, adAccount.connectionId, err.message);
+      err.statusCode = 401;
+      err.reconnectRequired = true;
+    }
     await MetaAccount.updateOne(
-      { userId, _id: adAccount.connectionId },
+      { userId, _id: adAccount.connectionId, ...(err.reconnectRequired ? { isValid: true } : {}) },
       { syncHealthStatus: 'error', lastErrorAt: new Date(), lastErrorMessage: err.message }
     );
     await logAudit(userId, 'meta_sync_failed', { connectionId: adAccount.connectionId, adAccountId: adAccount.accountId, actorType: 'system', error: err.message });
@@ -1315,6 +1361,11 @@ async function updateCampaignStatus(userId, campaignId, status) {
     actionLog.error = err.message;
     if (err.metaError) actionLog.responsePayload = { metaError: err.metaError };
     await actionLog.save();
+    if (isInvalidMetaTokenError(err)) {
+      await markConnectionTokenRevoked(userId, campaign.connectionId, err.message);
+      err.statusCode = 401;
+      err.reconnectRequired = true;
+    }
     throw err;
   }
 }

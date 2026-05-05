@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowRight, CheckCircle2, LineChart, Megaphone, RefreshCw, Sparkles, Target, TrendingUp, UserRound, Wallet } from "lucide-react";
 
 import Sidebar from "@/components/layout/Sidebar";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 
 type MetaMetrics = {
@@ -70,6 +70,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [metaError, setMetaError] = useState("");
 
   const loadOverview = async () => {
     const data = await api.getMetaAdsV2Overview();
@@ -98,9 +99,12 @@ export default function DashboardPage() {
 
   const connectMeta = async () => {
     setConnecting(true);
+    setMetaError("");
     try {
       const { url } = await api.getMetaAdsV2OAuthUrl();
       window.location.href = url;
+    } catch (err) {
+      setMetaError(err instanceof Error ? err.message : "Unable to start Meta connection.");
     } finally {
       setConnecting(false);
     }
@@ -108,9 +112,16 @@ export default function DashboardPage() {
 
   const syncMeta = async () => {
     setSyncing(true);
+    setMetaError("");
     try {
       const result = await api.syncMetaAdsV2({ datePreset: "last_30d" });
       setOverview(result.overview);
+    } catch (err) {
+      const message = err instanceof ApiError && /authenticate data|decrypt|token|expired|connected meta/i.test(err.message)
+        ? "Your saved Meta connection cannot be used. Reconnect Meta, then sync again."
+        : err instanceof Error ? err.message : "Meta sync failed.";
+      setMetaError(message);
+      await loadOverview().catch(() => undefined);
     } finally {
       setSyncing(false);
     }
@@ -185,6 +196,23 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <button onClick={connectMeta} className="btn-primary shrink-0">Connect Meta</button>
+              </div>
+            </section>
+          )}
+
+          {metaError && (
+            <section className="mb-6 rounded-lg border border-red-200 bg-red-50 p-5">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex gap-3">
+                  <AlertTriangle className="mt-1 h-5 w-5 shrink-0 text-red-700" />
+                  <div>
+                    <h2 className="font-bold text-red-950">Meta sync needs attention</h2>
+                    <p className="mt-1 text-sm font-medium text-red-800">{metaError}</p>
+                  </div>
+                </div>
+                <button onClick={connectMeta} disabled={connecting} className="btn-primary shrink-0">
+                  {connecting ? "Opening Meta" : "Reconnect Meta"}
+                </button>
               </div>
             </section>
           )}
