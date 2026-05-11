@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { BarChart3, Cpu, Download, Filter, MousePointer2, Target, TrendingUp, Users } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -22,6 +22,11 @@ const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR
 export default function GlobalAnalyticsPage() {
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const chartsReady = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   useEffect(() => {
     api.getAnalytics()
@@ -94,16 +99,18 @@ export default function GlobalAnalyticsPage() {
                 <p className="mt-1 text-xs font-medium text-zinc-500">Grouped by the dates stored in your performance records.</p>
               </div>
               <div className="h-[340px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trend}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="leads" stroke="#111827" fill="#111827" fillOpacity={0.08} strokeWidth={2} />
-                    <Area type="monotone" dataKey="clicks" stroke="#2563eb" fill="#2563eb" fillOpacity={0.05} strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {chartsReady ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={trend}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
+                      <Tooltip />
+                      <Area type="monotone" dataKey="leads" stroke="#111827" fill="#111827" fillOpacity={0.08} strokeWidth={2} />
+                      <Area type="monotone" dataKey="clicks" stroke="#2563eb" fill="#2563eb" fillOpacity={0.05} strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : <div className="h-full w-full rounded-lg bg-zinc-50" />}
               </div>
             </div>
 

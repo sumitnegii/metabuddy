@@ -1,6 +1,6 @@
 import { motion, type PanInfo } from "framer-motion";
 import type React from "react";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import {
@@ -135,6 +135,9 @@ function WorkflowConnectionLine({
   to: string;
   nodes: WorkflowNode[];
 }) {
+  const rawId = useId().replace(/:/g, "");
+  const gradientId = `workflow-flow-${rawId}`;
+  const glowId = `workflow-glow-${rawId}`;
   const fromNode = nodes.find((n) => n.id === from);
   const toNode = nodes.find((n) => n.id === to);
   if (!fromNode || !toNode) return null;
@@ -150,16 +153,74 @@ function WorkflowConnectionLine({
   const path = `M${startX},${startY} C${cp1X},${startY} ${cp2X},${endY} ${endX},${endY}`;
 
   return (
-    <path
-      d={path}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeDasharray="8,6"
-      strokeLinecap="round"
-      opacity={0.35}
-      className="text-foreground"
-    />
+    <g>
+      <defs>
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#fb923c" stopOpacity="0.1" />
+          <stop offset="28%" stopColor="#facc15" stopOpacity="0.95" />
+          <stop offset="52%" stopColor="#ffffff" stopOpacity="1" />
+          <stop offset="76%" stopColor="#38bdf8" stopOpacity="0.95" />
+          <stop offset="100%" stopColor="#fb923c" stopOpacity="0.1" />
+          <animateTransform
+            attributeName="gradientTransform"
+            type="translate"
+            from="-1 0"
+            to="1 0"
+            dur="1.6s"
+            repeatCount="indefinite"
+          />
+        </linearGradient>
+        <filter id={glowId} x="-25%" y="-80%" width="150%" height="260%">
+          <feGaussianBlur stdDeviation="3.5" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      <path
+        d={path}
+        fill="none"
+        stroke="#18181b"
+        strokeWidth={5}
+        strokeDasharray="8,12"
+        strokeLinecap="round"
+        opacity={0.5}
+      />
+      <path
+        d={path}
+        fill="none"
+        stroke={`url(#${gradientId})`}
+        strokeWidth={4}
+        strokeLinecap="round"
+        opacity={0.72}
+        filter={`url(#${glowId})`}
+      />
+      <path
+        d={path}
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth={2.2}
+        strokeDasharray="2 18 8 24"
+        strokeLinecap="round"
+        opacity={0.95}
+        filter={`url(#${glowId})`}
+      >
+        <animate attributeName="stroke-dashoffset" from="52" to="-52" dur="0.9s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.35;1;0.55;0.95;0.4" dur="1.35s" repeatCount="indefinite" />
+      </path>
+      <path
+        d={path}
+        fill="none"
+        stroke="#f97316"
+        strokeWidth={1.4}
+        strokeDasharray="1 24 4 18"
+        strokeLinecap="round"
+        opacity={0.9}
+      >
+        <animate attributeName="stroke-dashoffset" from="0" to="-96" dur="1.1s" repeatCount="indefinite" />
+      </path>
+    </g>
   );
 }
 

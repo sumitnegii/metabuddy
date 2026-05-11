@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { CheckCircle2, Clock, Cpu, History, Search, Users, Zap } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import Sidebar from "@/components/layout/Sidebar";
@@ -47,6 +47,11 @@ export default function AgentsUsagePage() {
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const chartsReady = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   useEffect(() => {
     api.getAgentUsage()
@@ -125,15 +130,17 @@ export default function AgentsUsagePage() {
               <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
                 <h2 className="mb-6 text-sm font-black uppercase tracking-widest text-black">Jobs by day</h2>
                 <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={usage?.jobsByDay || []}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
-                      <Tooltip />
-                      <Bar dataKey="count" fill="#111827" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {chartsReady ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={usage?.jobsByDay || []}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#71717a" }} />
+                        <Tooltip />
+                        <Bar dataKey="count" fill="#111827" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : <div className="h-full w-full rounded-lg bg-zinc-50" />}
                 </div>
               </div>
 

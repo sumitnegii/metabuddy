@@ -16,8 +16,12 @@ type Metrics = {
   ctr?: number;
   cpc?: number;
   cpm?: number;
+  conversions?: number;
   leads?: number;
+  purchases?: number;
+  purchaseValue?: number;
   costPerLead?: number;
+  roas?: number;
 };
 
 type MetaAd = {
@@ -32,6 +36,7 @@ type MetaAd = {
   callToActionType?: string;
   imageUrl?: string;
   lastInsights?: Metrics;
+  lastSyncedAt?: string;
 };
 
 type Recommendation = {
@@ -51,12 +56,27 @@ type Detail = {
   adSet?: { metaAdSetId: string; name: string; optimizationGoal?: string };
   recommendations: Recommendation[];
   actionLogs: { _id: string; actionType: string; status: string; error?: string; createdAt?: string }[];
+  dailyInsights?: { date: string; metrics: Metrics }[];
+  latestInsightSnapshot?: {
+    datePreset?: string;
+    dateStart?: string;
+    dateStop?: string;
+    raw?: { actions?: { action_type?: string; value?: string | number }[] };
+    createdAt?: string;
+  } | null;
 };
 
 function severityClass(severity: Recommendation["severity"]) {
   if (severity === "high") return "bg-red-50 text-red-700 border-red-100";
   if (severity === "medium") return "bg-amber-50 text-amber-700 border-amber-100";
   return "bg-zinc-50 text-zinc-600 border-zinc-100";
+}
+
+function actionRows(detail: Detail) {
+  return (detail.latestInsightSnapshot?.raw?.actions || [])
+    .map((action) => ({ label: String(action.action_type || "action"), value: Number(action.value || 0) }))
+    .filter((action) => action.value > 0)
+    .slice(0, 8);
 }
 
 export default function MetaAdPage({ params }: { params: Promise<{ id: string }> }) {
@@ -183,6 +203,38 @@ export default function MetaAdPage({ params }: { params: Promise<{ id: string }>
                 <p className="text-lg font-black text-black">{detail.ad.headline || "Headline not available"}</p>
                 <p className="mt-2 text-sm font-medium leading-6 text-zinc-600">{detail.ad.body || "Primary text not available from Meta sync."}</p>
               </div>
+
+              <h3 className="mt-6 mb-3 text-sm font-black uppercase tracking-[0.16em] text-zinc-400">Real Meta report</h3>
+              <div className="grid gap-3 md:grid-cols-2">
+                {[
+                  ["Reach", formatNumber(metrics.reach || 0)],
+                  ["CPC", formatCurrency(metrics.cpc || 0)],
+                  ["CPM", formatCurrency(metrics.cpm || 0)],
+                  ["Leads", formatNumber(metrics.leads || 0)],
+                  ["Purchases", formatNumber(metrics.purchases || 0)],
+                  ["ROAS", (metrics.roas || 0).toFixed(2)],
+                  ["Date range", detail.latestInsightSnapshot?.dateStart && detail.latestInsightSnapshot?.dateStop ? `${detail.latestInsightSnapshot.dateStart} to ${detail.latestInsightSnapshot.dateStop}` : "Last synced range"],
+                  ["Synced", detail.ad.lastSyncedAt ? new Date(detail.ad.lastSyncedAt).toLocaleString() : "Not synced"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-lg bg-zinc-50 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">{label}</p>
+                    <p className="mt-1 text-sm font-bold text-black">{value}</p>
+                  </div>
+                ))}
+              </div>
+              {actionRows(detail).length > 0 && (
+                <div className="mt-4 rounded-lg bg-zinc-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Meta action breakdown</p>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    {actionRows(detail).map((action) => (
+                      <div key={action.label} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-xs font-bold">
+                        <span className="truncate text-zinc-600">{action.label}</span>
+                        <span className="text-black">{formatNumber(action.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <h3 className="mt-6 mb-3 text-sm font-black uppercase tracking-[0.16em] text-zinc-400">Action log</h3>
               <div className="space-y-2">

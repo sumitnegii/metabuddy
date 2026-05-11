@@ -109,6 +109,18 @@ export const api = {
     req("/agents/ad-creatives/run", { method: "POST", body: JSON.stringify(b) }),
   runAdCreativeAgentStep: (b: { step: number; data: Record<string, unknown> }) =>
     req("/agents/run-step", { method: "POST", body: JSON.stringify(b) }),
+  createAdCreativePreview: (b: Record<string, unknown>) =>
+    req("/ad-creative-previews", { method: "POST", body: JSON.stringify(b) }),
+  createAdCreativePreviewsBulk: (b: { items: Record<string, unknown>[] }) =>
+    req("/ad-creative-previews/bulk", { method: "POST", body: JSON.stringify(b) }),
+  getAdCreativePreviews: (limit = 50) => req(`/ad-creative-previews?limit=${limit}`),
+  getAdCreativePreview: (id: string) => req(`/ad-creative-previews/${id}`),
+  publishAdCreativePreviewToMeta: (id: string, b: Record<string, unknown>) =>
+    req(`/ad-creative-previews/${id}/publish-meta`, { method: "POST", body: JSON.stringify(b) }),
+  createAdCreativeHistoryRun: (b: Record<string, unknown>) =>
+    req("/ad-creative-history", { method: "POST", body: JSON.stringify(b) }),
+  getAdCreativeHistoryRuns: (page = 1, limit = 12) => req(`/ad-creative-history?page=${page}&limit=${limit}`),
+  getAdCreativeHistoryRun: (id: string) => req(`/ad-creative-history/${id}`),
   predictAdPerformance: (b: { ad_text: string; audience?: string; sector?: string; headline?: string; cta?: string }) =>
     req("/mcp/analytics/predict", { method: "POST", body: JSON.stringify(b) }),
   storeAdCreativeMemory: (b: Record<string, unknown>) =>

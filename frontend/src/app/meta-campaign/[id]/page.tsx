@@ -16,8 +16,10 @@ type Metrics = {
   ctr?: number;
   cpc?: number;
   cpm?: number;
+  conversions?: number;
   leads?: number;
   purchases?: number;
+  purchaseValue?: number;
   costPerLead?: number;
   roas?: number;
 };
@@ -31,6 +33,9 @@ type MetaCampaign = {
   lastInsights?: Metrics;
   lastInsightsSummary?: Metrics;
   lastInsightsDate?: string;
+  dailyBudget?: number;
+  lifetimeBudget?: number;
+  lastSyncedAt?: string;
 };
 
 type MetaAdSet = {
@@ -76,6 +81,14 @@ type CampaignDetail = {
   ads: MetaAd[];
   recommendations: Recommendation[];
   actionLogs?: { _id: string; actionType: string; status: string; error?: string; createdAt?: string }[];
+  dailyInsights?: { date: string; metrics: Metrics }[];
+  latestInsightSnapshot?: {
+    datePreset?: string;
+    dateStart?: string;
+    dateStop?: string;
+    raw?: { actions?: { action_type?: string; value?: string | number }[] };
+    createdAt?: string;
+  } | null;
   latestAgentReport?: {
     generatedAt?: string;
     healthScore?: number;
@@ -89,6 +102,13 @@ function severityClass(severity: Recommendation["severity"]) {
   if (severity === "high") return "bg-red-50 text-red-700 border-red-100";
   if (severity === "medium") return "bg-amber-50 text-amber-700 border-amber-100";
   return "bg-zinc-50 text-zinc-600 border-zinc-100";
+}
+
+function actionRows(detail: CampaignDetail) {
+  return (detail.latestInsightSnapshot?.raw?.actions || [])
+    .map((action) => ({ label: String(action.action_type || "action"), value: Number(action.value || 0) }))
+    .filter((action) => action.value > 0)
+    .slice(0, 8);
 }
 
 export default function MetaCampaignPage({ params }: { params: Promise<{ id: string }> }) {
@@ -307,6 +327,50 @@ export default function MetaCampaignPage({ params }: { params: Promise<{ id: str
                 <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-400">{item.label}</p>
               </div>
             ))}
+          </section>
+
+          <section className="mb-6 rounded-lg border border-zinc-200 bg-white/90 shadow-sm backdrop-blur lift-hover p-6 shadow-sm">
+            <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h2 className="text-xl font-bold tracking-tight">Real Meta report</h2>
+                <p className="mt-1 text-sm font-medium text-zinc-500">Synced directly from Meta insights for this campaign.</p>
+              </div>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-zinc-400">
+                {detail.latestInsightSnapshot?.dateStart && detail.latestInsightSnapshot?.dateStop
+                  ? `${detail.latestInsightSnapshot.dateStart} to ${detail.latestInsightSnapshot.dateStop}`
+                  : detail.campaign.lastInsightsDate || "Last synced range"}
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-4">
+              {[
+                ["Reach", formatNumber(metrics.reach || 0)],
+                ["CPC", formatCurrency(metrics.cpc || 0)],
+                ["CPM", formatCurrency(metrics.cpm || 0)],
+                ["Leads", formatNumber(metrics.leads || 0)],
+                ["Purchases", formatNumber(metrics.purchases || 0)],
+                ["Purchase value", formatCurrency(metrics.purchaseValue || 0)],
+                ["ROAS", (metrics.roas || 0).toFixed(2)],
+                ["Synced", detail.campaign.lastSyncedAt ? new Date(detail.campaign.lastSyncedAt).toLocaleString() : "Not synced"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg bg-zinc-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">{label}</p>
+                  <p className="mt-1 text-sm font-bold text-black">{value}</p>
+                </div>
+              ))}
+            </div>
+            {actionRows(detail).length > 0 && (
+              <div className="mt-4 rounded-lg bg-zinc-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Meta action breakdown</p>
+                <div className="mt-3 grid gap-2 md:grid-cols-4">
+                  {actionRows(detail).map((action) => (
+                    <div key={action.label} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-xs font-bold">
+                      <span className="truncate text-zinc-600">{action.label}</span>
+                      <span className="text-black">{formatNumber(action.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="mb-6 rounded-lg border border-zinc-200 bg-white/90 shadow-sm backdrop-blur lift-hover p-5 shadow-sm">

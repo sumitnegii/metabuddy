@@ -36,7 +36,7 @@ const AGENT_DEFINITIONS = [
     agentName: 'AdCreativeFacebookAgent',
     provider: 'claude',
     systemPrompt: 'You are a highly experienced Facebook ads creative director. Return ONLY valid JSON.',
-    prompt: ({ userPrompt, previous }) => `Create 3 to 5 Facebook ad creative variations using the previous agent data. Every ad must use at least one real market keyword phrase from Agent 2. Avoid generic headlines like "Get Better Results".\n\nUser prompt:\n${userPrompt}\n\nPersona:\n${JSON.stringify(previous.persona || {})}\n\nMarket keywords:\n${JSON.stringify(previous.seo || {})}\n\nReturn JSON with keys: summary, ads, visualDirection, complianceNotes. ads must be array with type, text, headline, description, cta, bestFor, angle, keywordUsed.`,
+    prompt: ({ userPrompt, previous }) => `Create exactly 9 different Facebook ad creative variations using the previous agent data. Every ad must use at least one real market keyword phrase from Agent 2. Avoid generic headlines like "Get Better Results".\n\nUser prompt:\n${userPrompt}\n\nPersona:\n${JSON.stringify(previous.persona || {})}\n\nMarket keywords:\n${JSON.stringify(previous.seo || {})}\n\nReturn JSON with keys: summary, ads, visualDirection, complianceNotes. ads must be array with type, text, headline, description, cta, bestFor, angle, keywordUsed.`,
   },
   {
     id: 'stitch',
@@ -340,6 +340,13 @@ function buildCreativeFromMarket({ brief, previous, userPrompt }) {
   const secondKeyword = keywordTerm(primaryKeywords[1]) || brief.heading;
   const priceKeyword = keywordTerm(primaryKeywords.find((item) => String(item.hook || '').includes('budget') || String(item.term || '').includes('₹'))) || topKeyword;
   const trustKeyword = keywordTerm(primaryKeywords.find((item) => ['trust', 'cod', 'shipping'].includes(String(item.hook || '')))) || secondKeyword;
+  const thirdKeyword = keywordTerm(primaryKeywords[2]) || topKeyword;
+  const fourthKeyword = keywordTerm(primaryKeywords[3]) || secondKeyword;
+  const fifthKeyword = keywordTerm(primaryKeywords[4]) || priceKeyword;
+  const sixthKeyword = keywordTerm(primaryKeywords[5]) || trustKeyword;
+  const seventhKeyword = keywordTerm(primaryKeywords[6]) || topKeyword;
+  const eighthKeyword = keywordTerm(primaryKeywords[7]) || secondKeyword;
+  const ninthKeyword = keywordTerm(primaryKeywords[8]) || priceKeyword;
   const cta = toMetaCta(brief.ctaLink);
   const productLine = brief.oneLiner.replace(/\.$/, '');
   const description = brief.description;
@@ -361,7 +368,7 @@ function buildCreativeFromMarket({ brief, previous, userPrompt }) {
       {
         type: 'price_offer',
         keywordUsed: priceKeyword,
-        text: `Looking for ${priceKeyword}? Pick lightweight shoes made for daily wear without overpaying. Add a clear offer, delivery promise, or COD message before launch.`,
+        text: `Looking for ${priceKeyword}? Pick a better option for daily use without overpaying. Add a clear offer, delivery promise, or COD message before launch.`,
         headline: headlineFromKeyword(priceKeyword),
         description,
         cta,
@@ -387,6 +394,76 @@ function buildCreativeFromMarket({ brief, previous, userPrompt }) {
         cta,
         bestFor: 'Broad Meta prospecting',
         angle: 'Daily lifestyle use case',
+      },
+      {
+        type: 'social_proof',
+        keywordUsed: thirdKeyword,
+        text: `People comparing ${thirdKeyword} need proof fast. Lead with reviews, close-up product detail, and one reason this is easier to choose today.`,
+        headline: `Why Buyers Choose ${headlineFromKeyword(thirdKeyword)}`.slice(0, 72),
+        description,
+        cta,
+        bestFor: 'Warm audiences and review-led shoppers',
+        angle: 'Social proof and comparison',
+      },
+      {
+        type: 'urgency_offer',
+        keywordUsed: fourthKeyword,
+        text: `${fourthKeyword} is already a buying signal. Turn it into a limited launch test with a clear deadline, simple checkout, and visible value.`,
+        headline: `${headlineFromKeyword(fourthKeyword)} Today`.slice(0, 72),
+        description,
+        cta,
+        bestFor: 'Conversion campaigns with limited offers',
+        angle: 'Urgency and offer timing',
+      },
+      {
+        type: 'reels_hook',
+        keywordUsed: fifthKeyword,
+        text: `First 2 seconds: show the problem. Next: reveal ${fifthKeyword}. End with fit, proof, and ${brief.ctaLink}. Built for fast-scrolling Reels traffic.`,
+        headline: headlineFromKeyword(fifthKeyword),
+        description,
+        cta,
+        bestFor: 'Instagram Reels and mobile placements',
+        angle: 'Thumb-stop video hook',
+      },
+      {
+        type: 'carousel_story',
+        keywordUsed: sixthKeyword,
+        text: `Use ${sixthKeyword} as a carousel story: hook, benefit, proof, objection answer, then CTA. Each card should make the next click easier.`,
+        headline: `${headlineFromKeyword(sixthKeyword)} Guide`.slice(0, 72),
+        description,
+        cta,
+        bestFor: 'Carousel education and product comparison',
+        angle: 'Step-by-step buying story',
+      },
+      {
+        type: 'objection_breaker',
+        keywordUsed: seventhKeyword,
+        text: `If buyers hesitate on ${seventhKeyword}, answer the objection first. Show quality, sizing or service clarity, proof, and a low-risk next step.`,
+        headline: `Still Comparing ${headlineFromKeyword(seventhKeyword)}?`.slice(0, 72),
+        description,
+        cta,
+        bestFor: 'Retargeting hesitant buyers',
+        angle: 'Objection handling',
+      },
+      {
+        type: 'premium_value',
+        keywordUsed: eighthKeyword,
+        text: `${eighthKeyword} can feel premium without confusing the buyer. Show quality details, use-case, and why the value is worth acting on now.`,
+        headline: `Better Value: ${headlineFromKeyword(eighthKeyword)}`.slice(0, 72),
+        description,
+        cta,
+        bestFor: 'Value-focused prospecting',
+        angle: 'Premium value positioning',
+      },
+      {
+        type: 'bundle_test',
+        keywordUsed: ninthKeyword,
+        text: `Test ${ninthKeyword} with a bundle or offer frame. Keep the first line clear, make the saving obvious, and close with one direct CTA.`,
+        headline: `${headlineFromKeyword(ninthKeyword)} Offer`.slice(0, 72),
+        description,
+        cta,
+        bestFor: 'Offer testing and sale campaigns',
+        angle: 'Bundle and deal framing',
       },
     ],
     primaryText: `${productLine}. ${topKeyword} with a clear ${brief.ctaLink} action.`,
@@ -567,7 +644,7 @@ function scoreFromText(text, terms, base = 6.5) {
 function buildAdVariations(userPrompt, previous) {
   const creative = previous.creative || {};
   if (Array.isArray(creative.ads) && creative.ads.length > 0) {
-    return creative.ads.slice(0, 5).map((ad, index) => ({
+    const mapped = creative.ads.slice(0, 9).map((ad, index) => ({
       id: String(ad.type || `variation_${index + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, '_'),
       name: String(ad.type || `Variation ${index + 1}`).replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
       bestFor: ad.bestFor || 'Campaign testing',
@@ -576,9 +653,17 @@ function buildAdVariations(userPrompt, previous) {
       description: ad.description || creative.description || 'Built for high-intent buyers',
       cta: ad.cta || creative.cta || 'LEARN_MORE',
       angle: ad.angle || 'Ad variation',
+      keywordUsed: ad.keywordUsed || creative.keywordUsed || '',
     }));
+    if (mapped.length >= 9) return mapped;
+    const fallbackAds = fallbackVariationSet(userPrompt, creative).filter((ad) => !mapped.some((item) => item.id === ad.id));
+    return [...mapped, ...fallbackAds].slice(0, 9);
   }
 
+  return fallbackVariationSet(userPrompt, creative);
+}
+
+function fallbackVariationSet(userPrompt, creative) {
   const headline = creative.headline || 'Get Better Results';
   const primaryText = creative.primaryText || `A better way to move from interest to action. ${userPrompt}`;
   const description = creative.description || 'Built for high-intent buyers';
@@ -624,6 +709,56 @@ function buildAdVariations(userPrompt, previous) {
       description,
       cta,
       angle: 'Offer-led conversion hook',
+    },
+    {
+      id: 'social_proof',
+      name: 'Social Proof',
+      bestFor: 'Warm audiences',
+      primaryText: `Show proof before asking for the click. ${primaryText}`,
+      headline: headline.length > 24 ? headline : `${headline} With Proof`,
+      description,
+      cta,
+      angle: 'Reviews and buyer confidence',
+    },
+    {
+      id: 'reels_hook',
+      name: 'Reels Hook',
+      bestFor: 'Mobile video placements',
+      primaryText: `Open with a fast visual hook, then make the offer obvious. ${primaryText}`,
+      headline,
+      description,
+      cta,
+      angle: 'Short-form thumb-stop creative',
+    },
+    {
+      id: 'carousel_story',
+      name: 'Carousel Story',
+      bestFor: 'Carousel placements',
+      primaryText: `Tell the buying story in steps: problem, benefit, proof, offer, CTA. ${primaryText}`,
+      headline,
+      description,
+      cta,
+      angle: 'Sequential education',
+    },
+    {
+      id: 'objection_breaker',
+      name: 'Objection Breaker',
+      bestFor: 'Retargeting',
+      primaryText: `Answer the reason people hesitate, then give them a lower-risk next step. ${primaryText}`,
+      headline: `Still Comparing? ${headline}`.slice(0, 72),
+      description,
+      cta,
+      angle: 'Objection handling',
+    },
+    {
+      id: 'premium_value',
+      name: 'Premium Value',
+      bestFor: 'Value-focused prospecting',
+      primaryText: `Make the value feel clear and premium without making the buyer think too hard. ${primaryText}`,
+      headline: `Better Value: ${headline}`.slice(0, 72),
+      description,
+      cta,
+      angle: 'Quality and value',
     },
   ];
 }
@@ -718,8 +853,9 @@ async function buildIntelligence({ userId, userPrompt, previous, agents }) {
       sector: brief.sector,
     });
     return scoreVariation(variation, prediction);
-  });
-  const bestAd = [...variations].sort((a, b) => b.adQualityScore - a.adQualityScore || b.ctrPrediction - a.ctrPrediction)[0];
+  }).sort((a, b) => b.adQualityScore - a.adQualityScore || b.ctrPrediction - a.ctrPrediction || a.riskScore - b.riskScore)
+    .map((variation, index) => ({ ...variation, rank: index + 1 }));
+  const bestAd = variations[0];
   const impressions = 10000;
   const clicks = Math.round(impressions * (bestAd.ctrPrediction / 100));
   const conversions = Math.round(clicks * (bestAd.conversionRate / 100));

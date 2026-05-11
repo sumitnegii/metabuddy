@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   BarChart3,
   Bot,
@@ -9,12 +9,20 @@ import {
   ExternalLink,
   FileText,
   GitBranch,
+  Globe2,
+  History,
+  Heart,
   ImageIcon,
   Layers3,
   Loader2,
+  MessageCircle,
+  MoreHorizontal,
+  Send,
   Search,
   ShieldCheck,
+  ShoppingBag,
   Sparkles,
+  ThumbsUp,
   UserRound,
 } from "lucide-react";
 import {
@@ -42,7 +50,8 @@ import { api } from "@/lib/api";
 
 type AgentStatus = "ready" | "running" | "complete" | "fallback" | "failed";
 type AgentOutput = string | Record<string, unknown> | unknown[];
-type SectionId = "brief" | "intelligence" | "variations" | "agents" | "report" | "workflow";
+type SectionId = "brief" | "intelligence" | "variations" | "previews" | "history" | "agents" | "report" | "workflow";
+type PreviewPlatform = "facebook" | "instagram" | "whatsapp" | "webapp";
 
 type AgentStep = {
   id: string;
@@ -75,6 +84,8 @@ type AdVariation = {
   conversionRate: number;
   riskScore: number;
   predictionModel?: string;
+  rank?: number;
+  keywordUsed?: string;
 };
 
 type Intelligence = {
@@ -167,6 +178,34 @@ type StepResult = {
   final?: PipelineResult | null;
 };
 
+type SavedAdCreativeHistoryRun = {
+  _id: string;
+  prompt?: string;
+  platform: PreviewPlatform;
+  selectedVariationId?: string;
+  bestAd?: AdVariation | null;
+  variationCount?: number;
+  variations: AdVariation[];
+  intelligence?: Intelligence | null;
+  agents?: PipelineAgent[];
+  audit?: AgentOutput | null;
+  report?: AgentOutput | null;
+  mermaid?: string;
+  totals?: { tokens?: number; cost?: number };
+  fullResult?: PipelineResult | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type HistoryPagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasPrev: boolean;
+  hasNext: boolean;
+};
+
 const generatingCopy: Record<number, string> = {
   1: "Analyzing persona...",
   2: "Finding keywords...",
@@ -192,7 +231,7 @@ const mermaidDefault = `flowchart LR
 const baseAgents: AgentStep[] = [
   { id: "persona", name: "Agent 1", role: "Persona", icon: UserRound, status: "ready", output: "Buyer persona, pain points, intent, objections, and promise angle.", tokens: 0, cost: 0 },
   { id: "seo", name: "Agent 2", role: "SEO Keywords", icon: Search, status: "ready", output: "Search terms, benefit keywords, offer language, and negative terms.", tokens: 0, cost: 0 },
-  { id: "creative", name: "Agent 3", role: "Ad Variations", icon: ImageIcon, status: "ready", output: "Generates 3-5 ad variations for testing.", tokens: 0, cost: 0 },
+  { id: "creative", name: "Agent 3", role: "Ad Variations", icon: ImageIcon, status: "ready", output: "Generates 9 ranked ad variations for testing.", tokens: 0, cost: 0 },
   { id: "stitch", name: "Agent 4", role: "Strategy Stitch", icon: FileText, status: "ready", output: "Combines context into strategy, best angle, and handoff report.", tokens: 0, cost: 0 },
   { id: "auditor", name: "Agent 5", role: "Auditor + Predictor", icon: ShieldCheck, status: "ready", output: "Compares ads, predicts performance, ranks winners, and flags gaps.", tokens: 0, cost: 0 },
   { id: "logs", name: "Agent 6", role: "Logs + MCP", icon: Database, status: "ready", output: "Stores logs, token/cost estimate, MCP context, and workflow notes.", tokens: 0, cost: 0 },
@@ -202,9 +241,18 @@ const sections: Array<{ id: SectionId; label: string; icon: typeof Bot }> = [
   { id: "brief", label: "Brief", icon: Sparkles },
   { id: "intelligence", label: "Intelligence", icon: BarChart3 },
   { id: "variations", label: "Variations", icon: Layers3 },
+  { id: "previews", label: "Ad Preview", icon: ImageIcon },
+  { id: "history", label: "History", icon: History },
   { id: "agents", label: "Agents", icon: Bot },
   { id: "report", label: "Report", icon: FileText },
   { id: "workflow", label: "Workflow", icon: GitBranch },
+];
+
+const previewPlatforms: Array<{ id: PreviewPlatform; label: string; helper: string; icon: typeof Bot }> = [
+  { id: "facebook", label: "Facebook Feed", helper: "Sponsored feed unit", icon: ThumbsUp },
+  { id: "instagram", label: "Instagram", helper: "Post/Reels-style ad", icon: ImageIcon },
+  { id: "whatsapp", label: "WhatsApp", helper: "Click-to-message ad", icon: MessageCircle },
+  { id: "webapp", label: "Web/App", helper: "Landing/app placement", icon: Globe2 },
 ];
 
 const adIntentWords = [
@@ -374,6 +422,16 @@ export default function AdCreativesPage() {
   const [mermaid, setMermaid] = useState(mermaidDefault);
   const [intelligence, setIntelligence] = useState<Intelligence | null>(null);
   const [selectedVariationId, setSelectedVariationId] = useState("");
+  const [previewPlatform, setPreviewPlatform] = useState<PreviewPlatform>("facebook");
+  const [openingPreviewId, setOpeningPreviewId] = useState("");
+  const [savedPreviewIds, setSavedPreviewIds] = useState<Record<string, string>>({});
+  const [history, setHistory] = useState<SavedAdCreativeHistoryRun[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPagination, setHistoryPagination] = useState<HistoryPagination>({ page: 1, limit: 12, total: 0, totalPages: 1, hasPrev: false, hasNext: false });
+  const [loadingHistoryRunId, setLoadingHistoryRunId] = useState("");
   const [currentStep, setCurrentStep] = useState(0);
   const [showGenerating, setShowGenerating] = useState(false);
 
@@ -386,6 +444,56 @@ export default function AdCreativesPage() {
   function buildStructuredPrompt() {
     return prompt.trim();
   }
+
+  async function loadHistory(force = false, page = historyPage) {
+    if (historyLoading || (historyLoaded && !force)) return;
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const response = await api.getAdCreativeHistoryRuns(page, 12) as { history?: SavedAdCreativeHistoryRun[]; pagination?: HistoryPagination };
+      setHistory(response.history || []);
+      setHistoryPage(response.pagination?.page || page);
+      setHistoryPagination(response.pagination || { page, limit: 12, total: response.history?.length || 0, totalPages: 1, hasPrev: false, hasNext: false });
+      setHistoryLoaded(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not load ad creative history";
+      setHistoryError(message.toLowerCase().includes("route not found")
+        ? "History route is not available on the running backend yet. Restart or redeploy the backend so /api/ad-creative-history is registered."
+        : message);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function saveCreativeHistory(nextIntelligence: Intelligence | null, sourcePrompt: string, finalResult: PipelineResult | null, completedAgents: PipelineAgent[]) {
+    if (!nextIntelligence?.variations?.length) return;
+    const payload = {
+      prompt: sourcePrompt,
+      platform: previewPlatform,
+      selectedVariationId: nextIntelligence.bestAd?.id || nextIntelligence.variations[0]?.id || "",
+      bestAd: nextIntelligence.bestAd || nextIntelligence.variations[0] || null,
+      variations: nextIntelligence.variations,
+      intelligence: nextIntelligence,
+      agents: completedAgents,
+      audit: finalResult?.audit || null,
+      report: finalResult?.report || null,
+      mermaid: finalResult?.mermaid || mermaid,
+      totals: finalResult?.totals || totals,
+      fullResult: finalResult,
+    };
+
+    const response = await api.createAdCreativeHistoryRun(payload) as { history?: SavedAdCreativeHistoryRun };
+    if (!response.history) throw new Error("Ad creative history was not saved");
+    if (historyPage === 1) setHistory((current) => [response.history as SavedAdCreativeHistoryRun, ...current].slice(0, historyPagination.limit || 12));
+    setHistoryPagination((current) => ({ ...current, total: current.total + 1, totalPages: Math.max(1, Math.ceil((current.total + 1) / current.limit)) }));
+    setHistoryLoaded(true);
+  }
+
+  useEffect(() => {
+    if (activeSection === "history") {
+      void loadHistory();
+    }
+  }, [activeSection]);
 
   async function runPreanalysis() {
     const fullPrompt = buildStructuredPrompt();
@@ -406,6 +514,7 @@ export default function AdCreativesPage() {
     setAudit(null);
     setIntelligence(null);
     setSelectedVariationId("");
+    setSavedPreviewIds({});
     setCurrentStep(1);
     setShowGenerating(true);
     setAgents(baseAgents.map((agent, agentIndex) => ({
@@ -463,6 +572,9 @@ export default function AdCreativesPage() {
           setIntelligence(result.final.intelligence || null);
           setSelectedVariationId(result.final.intelligence?.bestAd?.id || "");
           if (result.final.mermaid) setMermaid(result.final.mermaid);
+          await saveCreativeHistory(result.final.intelligence || null, fullPrompt, result.final, completedAgents).catch((saveError) => {
+            setError(saveError instanceof Error ? saveError.message : "Generated creatives could not be saved to history");
+          });
         }
       }
     } catch (err) {
@@ -480,6 +592,91 @@ export default function AdCreativesPage() {
   const bestAd = intelligence?.bestAd;
   const selectedAd = intelligence?.variations.find((variation) => variation.id === selectedVariationId) || bestAd;
   const activeAgent = currentStep > 0 ? agents[currentStep - 1] : null;
+
+  async function openPreviewPage(variation: AdVariation, rank: number) {
+    setSelectedVariationId(variation.id);
+    setOpeningPreviewId(variation.id);
+    setError("");
+    const savedId = savedPreviewIds[variation.id];
+    if (savedId) {
+      window.open(`/ad-creatives/preview/${savedId}`, "_blank", "noopener,noreferrer");
+      setOpeningPreviewId("");
+      return;
+    }
+    const fallbackPayload = {
+      variation,
+      platform: previewPlatform,
+      rank,
+      currency: intelligence?.forecast?.currency || "INR",
+      cpm: intelligence?.forecast?.assumedCpm || 100,
+      savedAt: new Date().toISOString(),
+    };
+    try {
+      const response = await api.createAdCreativePreview({
+        variation,
+        platform: previewPlatform,
+        rank,
+        currency: intelligence?.forecast?.currency || "INR",
+        cpm: intelligence?.forecast?.assumedCpm || 100,
+        prompt,
+        forecast: intelligence?.forecast || null,
+      }) as { preview?: { _id?: string } };
+      const id = response.preview?._id;
+      if (!id) throw new Error("Preview draft was not created");
+      setSavedPreviewIds((current) => ({ ...current, [variation.id]: id }));
+      window.open(`/ad-creatives/preview/${id}`, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not open preview draft";
+      if (message.toLowerCase().includes("route not found")) {
+        window.localStorage.setItem("mb_ad_creative_preview", JSON.stringify(fallbackPayload));
+        window.open("/ad-creatives/preview", "_blank", "noopener,noreferrer");
+      } else {
+        setError(message);
+      }
+    } finally {
+      setOpeningPreviewId("");
+    }
+  }
+
+  async function loadHistoryRun(run: SavedAdCreativeHistoryRun) {
+    setLoadingHistoryRunId(run._id);
+    setError("");
+    try {
+      const response = await api.getAdCreativeHistoryRun(run._id) as { history?: SavedAdCreativeHistoryRun };
+      const fullRun = response.history || run;
+      const restoredIntelligence = fullRun.intelligence || (fullRun.variations.length ? {
+      variations: fullRun.variations,
+      bestAd: fullRun.bestAd || fullRun.variations[0],
+      radar: [],
+      funnel: [],
+      costBreakdown: [],
+      insights: [],
+    } as Intelligence : null);
+
+    setPrompt(fullRun.prompt || "");
+    setPreviewPlatform(fullRun.platform || "facebook");
+    setIntelligence(restoredIntelligence);
+    setSelectedVariationId(fullRun.selectedVariationId || fullRun.bestAd?.id || fullRun.variations[0]?.id || "");
+    setAudit(fullRun.audit || null);
+    setMermaid(fullRun.mermaid || mermaidDefault);
+    setSavedPreviewIds({});
+    setCurrentStep(0);
+    setShowGenerating(false);
+    if (fullRun.agents?.length) {
+      setAgents(baseAgents.map((agent) => {
+        const saved = fullRun.agents?.find((item) => item.id === agent.id);
+        return saved ? { ...agent, ...saved } : agent;
+      }));
+    } else {
+      setAgents(baseAgents);
+    }
+    setActiveSection("intelligence");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load this creative run");
+    } finally {
+      setLoadingHistoryRunId("");
+    }
+  }
 
   return (
     <div className="flex min-h-screen bg-white text-black">
@@ -571,7 +768,7 @@ export default function AdCreativesPage() {
                   <>
                     <div className="grid gap-4 lg:grid-cols-5">
                       {[
-                        ["Ad Score", `${bestAd?.adQualityScore}/10`, bestAd?.name],
+                        ["Ad Score", `${bestAd?.adQualityScore}/10`, bestAd?.rank ? `Rank #${bestAd.rank} · ${bestAd.name}` : bestAd?.name],
                         ["CTR Prediction", `${bestAd?.ctrPrediction}%`, "Estimated click-through"],
                         ["Conversion", `${bestAd?.conversionRate}%`, "Predicted post-click"],
                         ["Confidence", `${intelligence.preLaunchConfidence || 0}%`, "Pre-launch confidence"],
@@ -584,6 +781,17 @@ export default function AdCreativesPage() {
                         </div>
                       ))}
                     </div>
+
+                    {intelligence.forecast && (
+                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+                        <ForecastMetric label="Reach" value={intelligence.forecast.reach.toLocaleString()} helper="Predicted people reached" />
+                        <ForecastMetric label="Impressions" value={intelligence.forecast.impressions.toLocaleString()} helper={`${intelligence.forecast.frequency}x frequency`} />
+                        <ForecastMetric label="Clicks" value={intelligence.forecast.clicks.toLocaleString()} helper={`${intelligence.forecast.ctr}% CTR`} />
+                        <ForecastMetric label="Conversions" value={intelligence.forecast.conversions.toLocaleString()} helper={`${intelligence.forecast.conversionRate}% post-click`} />
+                        <ForecastMetric label="Spend" value={formatMoney(intelligence.forecast.spend, intelligence.forecast.currency)} helper={`${formatMoney(intelligence.forecast.assumedCpm, intelligence.forecast.currency)} CPM`} />
+                        <ForecastMetric label="CPA" value={formatMoney(intelligence.forecast.cpa, intelligence.forecast.currency)} helper="Cost per conversion" />
+                      </div>
+                    )}
 
                     <div className="grid gap-5 xl:grid-cols-3">
                       <ChartPanel title="Performance Radar">
@@ -612,7 +820,7 @@ export default function AdCreativesPage() {
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis dataKey="name" tick={{ fontSize: 11, fontWeight: 700 }} />
                             <YAxis tick={{ fontSize: 11 }} />
-                            <Tooltip />
+                            <Tooltip formatter={(value) => [`₹${Number(value).toFixed(4)}`, "Estimated cost"]} />
                             <Bar dataKey="cost" fill="#111" radius={[6, 6, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
@@ -624,6 +832,11 @@ export default function AdCreativesPage() {
                         <p className="text-[11px] font-black uppercase tracking-widest text-zinc-400">Decision Engine</p>
                         <h2 className="mt-3 text-3xl font-black">Recommended: {bestAd?.name} Creative</h2>
                         <p className="mt-2 text-sm font-semibold text-zinc-500">{bestAd?.angle} · Best for {bestAd?.bestFor} · {intelligence.preLaunchConfidence}% confidence</p>
+                        <div className="mt-5 grid gap-3 md:grid-cols-3">
+                          <Metric label="Rank" value={bestAd?.rank ? `#${bestAd.rank} of ${intelligence.variations.length}` : "Pending"} />
+                          <Metric label="Keyword used" value={bestAd ? variationKeyword(bestAd) : "Pending"} />
+                          <Metric label="Predicted CPC" value={intelligence.forecast ? formatMoney(intelligence.forecast.cpc, intelligence.forecast.currency) : "Pending"} />
+                        </div>
                         <div className="mt-4 flex flex-wrap gap-2">
                           {(intelligence.mcpServices || []).map((service) => (
                             <span key={service} className="rounded-full bg-black px-3 py-1 text-xs font-black uppercase tracking-wider text-white">{service} MCP</span>
@@ -646,17 +859,171 @@ export default function AdCreativesPage() {
 
             {activeSection === "variations" && (
               <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
-                <div className="border-b border-zinc-100 p-5"><h2 className="text-xl font-black">Ad Variation Comparison</h2><p className="mt-1 text-sm font-semibold text-zinc-500">Click a row to preview or rerun the same brief with that angle.</p></div>
+                <div className="border-b border-zinc-100 p-5"><h2 className="text-xl font-black">Ad Variation Comparison</h2><p className="mt-1 text-sm font-semibold text-zinc-500">Real generated copy, market keyword, CTA, and predicted Meta launch numbers for this request.</p></div>
                 {!intelligence ? <EmptyState text="Run agents to compare ad variations." /> : intelligence.variations.map((variation) => (
-                  <button key={variation.id} type="button" onClick={() => setSelectedVariationId(variation.id)} className={`grid w-full gap-4 border-b border-zinc-100 p-5 text-left transition last:border-b-0 hover:bg-zinc-50 lg:grid-cols-[1fr_100px_100px_120px_100px_110px] ${selectedVariationId === variation.id ? "bg-zinc-50" : "bg-white"}`}>
-                    <div><p className="font-black">{variation.name}</p><p className="mt-1 text-sm font-semibold text-zinc-500">{variation.angle} · {variation.bestFor}</p></div>
-                    <Metric label="Score" value={`${variation.adQualityScore}/10`} />
-                    <Metric label="CTR" value={`${variation.ctrPrediction}%`} />
-                    <Metric label="Conversion" value={`${variation.conversionRate}%`} />
-                    <Metric label="Risk" value={`${variation.riskScore}/10`} />
-                    <Metric label="Status" value={variation.id === bestAd?.id ? "Best" : variation.adQualityScore >= 8 ? "Good" : "Weak"} />
+                  <button key={variation.id} type="button" onClick={() => setSelectedVariationId(variation.id)} className={`grid w-full gap-5 border-b border-zinc-100 p-5 text-left transition last:border-b-0 hover:bg-zinc-50 xl:grid-cols-[minmax(0,1fr)_520px] ${selectedVariationId === variation.id ? "bg-zinc-50" : "bg-white"}`}>
+                    <VariationCopyBlock variation={variation} best={variation.id === bestAd?.id} />
+                    <VariationForecastBlock variation={variation} currency={intelligence.forecast?.currency || "INR"} cpm={intelligence.forecast?.assumedCpm || 100} />
                   </button>
                 ))}
+              </div>
+            )}
+
+            {activeSection === "previews" && (
+              <div className="space-y-5">
+                {!intelligence ? (
+                  <EmptyState text="Run agents to generate 9 ranked ad previews." />
+                ) : (
+                  <>
+                    <div className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+                      <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+                        <div>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-400">Ranked ad previews</p>
+                          <h2 className="mt-2 text-2xl font-black">9 realistic placement previews from the same user input</h2>
+                          <p className="mt-2 text-sm font-semibold text-zinc-500">Switch platform to inspect how each creative reads on Facebook, Instagram, WhatsApp, and web/app placements.</p>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-4">
+                          {previewPlatforms.map((platform) => (
+                            <button
+                              key={platform.id}
+                              type="button"
+                              onClick={() => setPreviewPlatform(platform.id)}
+                              className={`rounded-lg border px-3 py-2 text-left transition ${
+                                previewPlatform === platform.id ? "border-black bg-black text-white" : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
+                              }`}
+                            >
+                              <span className="flex items-center gap-2 text-xs font-black">
+                                <platform.icon className="h-4 w-4" />
+                                {platform.label}
+                              </span>
+                              <span className={`mt-1 block text-[10px] font-bold ${previewPlatform === platform.id ? "text-zinc-300" : "text-zinc-400"}`}>{platform.helper}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                      {intelligence.variations.slice(0, 9).map((variation, index) => (
+                        <RankedAdPreview
+                          key={variation.id}
+                          variation={variation}
+                          rank={variation.rank || index + 1}
+                          selected={selectedVariationId === variation.id}
+                          currency={intelligence.forecast?.currency || "INR"}
+                          cpm={intelligence.forecast?.assumedCpm || 100}
+                          platform={previewPlatform}
+                          isOpening={openingPreviewId === variation.id}
+                          onSelect={() => openPreviewPage(variation, variation.rank || index + 1)}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {activeSection === "history" && (
+              <div className="space-y-5">
+                <div className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                    <div>
+                      <p className="text-[11px] font-black uppercase tracking-widest text-zinc-400">Database history</p>
+                      <h2 className="mt-2 text-2xl font-black">Saved creative runs</h2>
+                      <p className="mt-2 text-sm font-semibold text-zinc-500">Compact paginated history. Open a row to load the full stored run object only when needed.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-zinc-100 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-zinc-600">
+                        {historyPagination.total.toLocaleString()} runs
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => loadHistory(true, historyPage)}
+                        disabled={historyLoading}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 transition hover:border-black hover:text-black disabled:opacity-60"
+                      >
+                        {historyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
+                        Refresh
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {historyLoading && history.length === 0 ? (
+                  <div className="rounded-lg border border-zinc-200 bg-white p-10 text-center shadow-sm">
+                    <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-zinc-400" />
+                    <p className="text-sm font-bold text-zinc-500">Loading saved creatives...</p>
+                  </div>
+                ) : historyError ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-8 text-center shadow-sm">
+                    <h3 className="text-lg font-black text-amber-900">History is not connected yet</h3>
+                    <p className="mx-auto mt-2 max-w-2xl text-sm font-semibold leading-6 text-amber-800">{historyError}</p>
+                  </div>
+                ) : history.length === 0 ? (
+                  <EmptyState text="No saved creative runs yet. Run the agents once to store the full generated object in the database." />
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
+                    <div className="min-w-[820px]">
+                    <div className="grid grid-cols-[minmax(0,1.3fr)_100px_96px_96px_120px_110px] gap-3 border-b border-zinc-100 bg-zinc-50 px-4 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">
+                      <span>Creative run</span>
+                      <span>Platform</span>
+                      <span>Ads</span>
+                      <span>Best CTR</span>
+                      <span>Saved</span>
+                      <span className="text-right">Action</span>
+                    </div>
+                    <div className="divide-y divide-zinc-100">
+                      {history.map((run) => {
+                        const best = run.bestAd || run.intelligence?.bestAd || run.variations[0];
+                        const savedAt = run.createdAt ? new Date(run.createdAt).toLocaleDateString() : "Saved";
+                        return (
+                          <div key={run._id} className="grid grid-cols-[minmax(0,1.3fr)_100px_96px_96px_120px_110px] items-center gap-3 px-4 py-3 transition hover:bg-zinc-50">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-black text-zinc-950">{best?.headline || "Saved creative run"}</p>
+                              <p className="mt-1 truncate text-xs font-semibold text-zinc-500">{run.prompt || "Prompt not stored"}</p>
+                            </div>
+                            <span className="truncate text-xs font-black text-zinc-600">{platformLabel(run.platform)}</span>
+                            <span className="text-xs font-black text-zinc-700">{run.variationCount || run.variations.length}</span>
+                            <span className="text-xs font-black text-zinc-700">{(best?.ctrPrediction || 0).toFixed(2)}%</span>
+                            <span className="text-xs font-bold text-zinc-500">{savedAt}</span>
+                            <button
+                              type="button"
+                              onClick={() => loadHistoryRun(run)}
+                              disabled={loadingHistoryRunId === run._id}
+                              className="ml-auto inline-flex h-9 items-center gap-2 rounded-full bg-black px-3 text-xs font-black text-white transition hover:bg-zinc-800 disabled:opacity-60"
+                            >
+                              {loadingHistoryRunId === run._id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
+                              Load
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 bg-zinc-50 px-4 py-3">
+                      <p className="text-xs font-bold text-zinc-500">
+                        Page {historyPagination.page} of {historyPagination.totalPages} · {historyPagination.total.toLocaleString()} total
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => loadHistory(true, Math.max(1, historyPagination.page - 1))}
+                          disabled={historyLoading || !historyPagination.hasPrev}
+                          className="h-9 rounded-full border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 disabled:opacity-40"
+                        >
+                          Previous
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => loadHistory(true, historyPagination.page + 1)}
+                          disabled={historyLoading || !historyPagination.hasNext}
+                          className="h-9 rounded-full border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 disabled:opacity-40"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -723,7 +1090,20 @@ export default function AdCreativesPage() {
 }
 
 function ChartPanel({ title, children }: { title: string; children: React.ReactNode }) {
-  return <div className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm"><h2 className="mb-4 text-lg font-black">{title}</h2><div className="h-72">{children}</div></div>;
+  const isClient = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+
+  return (
+    <div className="min-w-0 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+      <h2 className="mb-4 text-lg font-black">{title}</h2>
+      <div className="h-72 min-w-0">
+        {isClient ? children : <div className="h-full w-full rounded-lg bg-zinc-50" />}
+      </div>
+    </div>
+  );
 }
 
 function agentWorkflowDescription(agent: AgentStep) {
@@ -831,6 +1211,267 @@ function WorkflowDiagram({ agents, mermaid, prompt, intelligence }: { agents: Ag
       mermaid={mermaid}
       editable={false}
     />
+  );
+}
+
+function variationKeyword(variation: AdVariation) {
+  if (variation.keywordUsed) return variation.keywordUsed;
+  const parts = [variation.headline, variation.primaryText]
+    .join(" ")
+    .match(/\b(?:oversized|graphic|cotton|premium|streetwear|running|sneakers|sports|candles|fitness|coach|clinic)[^.,]{0,42}/i);
+  return parts?.[0]?.trim() || variation.headline;
+}
+
+function rankTone(rank: number) {
+  if (rank === 1) return "bg-black text-white";
+  if (rank <= 3) return "bg-emerald-50 text-emerald-700";
+  if (rank <= 6) return "bg-amber-50 text-amber-700";
+  return "bg-zinc-100 text-zinc-600";
+}
+
+function variationForecast(variation: AdVariation, cpm: number) {
+  const impressions = 10000;
+  const spend = (impressions / 1000) * cpm;
+  const clicks = Math.round(impressions * (variation.ctrPrediction / 100));
+  const conversions = Math.max(1, Math.round(clicks * (variation.conversionRate / 100)));
+  return {
+    impressions,
+    clicks,
+    conversions,
+    spend,
+    cpc: spend / Math.max(clicks, 1),
+    cpa: spend / Math.max(conversions, 1),
+  };
+}
+
+function RankedAdPreview({
+  variation,
+  rank,
+  selected,
+  currency,
+  cpm,
+  platform,
+  isOpening,
+  onSelect,
+}: {
+  variation: AdVariation;
+  rank: number;
+  selected: boolean;
+  currency: string;
+  cpm: number;
+  platform: PreviewPlatform;
+  isOpening: boolean;
+  onSelect: () => void;
+}) {
+  const forecast = variationForecast(variation, cpm);
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`cursor-pointer overflow-hidden rounded-lg border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${selected ? "border-black ring-2 ring-black/10" : "border-zinc-200"}`}
+    >
+      <div className="flex items-center justify-between border-b border-zinc-100 p-4">
+        <div>
+          <p className="text-sm font-black">Your Brand</p>
+          <p className="text-xs font-semibold text-zinc-500">{platformLabel(platform)} · Live placement preview</p>
+        </div>
+        <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${rankTone(rank)}`}>
+          {isOpening && <Loader2 className="h-3 w-3 animate-spin" />}
+          Rank #{rank}
+        </span>
+      </div>
+      <PlatformAdPreview variation={variation} platform={platform} rank={rank} />
+      <div className="grid grid-cols-4 gap-px bg-zinc-100 text-center">
+        <div className="bg-white p-3"><Metric label="Score" value={`${variation.adQualityScore}/10`} /></div>
+        <div className="bg-white p-3"><Metric label="CTR" value={`${variation.ctrPrediction}%`} /></div>
+        <div className="bg-white p-3"><Metric label="Conv." value={forecast.conversions.toLocaleString()} /></div>
+        <div className="bg-white p-3"><Metric label="CPA" value={formatMoney(forecast.cpa, currency)} /></div>
+      </div>
+    </div>
+  );
+}
+
+function platformLabel(platform: PreviewPlatform) {
+  if (platform === "facebook") return "Facebook Feed";
+  if (platform === "instagram") return "Instagram Ad";
+  if (platform === "whatsapp") return "WhatsApp Click-to-message";
+  return "Web/App placement";
+}
+
+function PlatformAdPreview({ variation, platform, rank }: { variation: AdVariation; platform: PreviewPlatform; rank: number }) {
+  if (platform === "instagram") return <InstagramPlacement variation={variation} rank={rank} />;
+  if (platform === "whatsapp") return <WhatsAppPlacement variation={variation} rank={rank} />;
+  if (platform === "webapp") return <WebAppPlacement variation={variation} rank={rank} />;
+  return <FacebookPlacement variation={variation} rank={rank} />;
+}
+
+function CreativeVisual({ variation, compact = false }: { variation: AdVariation; compact?: boolean }) {
+  return (
+    <div className={`relative overflow-hidden ${compact ? "h-44" : "aspect-[1.18]"} bg-[radial-gradient(circle_at_28%_20%,rgba(255,255,255,0.95),transparent_24%),linear-gradient(135deg,#ffedd5,#ecfdf5_48%,#dbeafe)]`}>
+      <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500 shadow-sm">MetaBuddy</div>
+      <div className="absolute inset-x-5 bottom-5 rounded-2xl bg-white/86 p-4 text-left shadow-[0_18px_44px_rgba(15,23,42,0.12)] backdrop-blur">
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-600">{variation.angle}</p>
+        <h3 className="mt-1 line-clamp-2 text-lg font-black leading-tight text-zinc-950">{variation.headline}</h3>
+        <p className="mt-2 line-clamp-1 text-xs font-bold text-zinc-500">{variationKeyword(variation)}</p>
+      </div>
+      <div className="absolute right-5 top-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-950 text-white shadow-xl">
+        <ShoppingBag className="h-7 w-7" />
+      </div>
+    </div>
+  );
+}
+
+function FacebookPlacement({ variation, rank }: { variation: AdVariation; rank: number }) {
+  return (
+    <div className="bg-[#f0f2f5] p-3">
+      <div className="overflow-hidden rounded-lg border border-[#dddfe2] bg-white text-[#050505] shadow-sm">
+        <div className="flex items-center gap-3 p-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e7f3ff] text-[#1877f2]"><ShoppingBag className="h-5 w-5" /></div>
+          <div className="min-w-0">
+            <p className="text-[13px] font-bold">Your Brand</p>
+            <p className="text-[11px] font-semibold text-[#65676b]">Sponsored · <span className="align-middle">🌐</span></p>
+          </div>
+          <MoreHorizontal className="ml-auto h-5 w-5 text-[#65676b]" />
+        </div>
+        <p className="px-3 pb-3 text-[13px] leading-[1.35]">{variation.primaryText}</p>
+        <CreativeVisual variation={variation} />
+        <div className="flex items-center justify-between gap-3 bg-[#f0f2f5] px-3 py-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase text-[#65676b]">yourbrand.com</p>
+            <p className="truncate text-[14px] font-bold">{variation.headline}</p>
+            <p className="truncate text-[12px] text-[#65676b]">{variation.description}</p>
+          </div>
+          <span className="shrink-0 rounded-md bg-[#e4e6eb] px-3 py-2 text-[12px] font-bold text-[#050505]">{variation.cta.replaceAll("_", " ")}</span>
+        </div>
+        <div className="flex items-center justify-between border-t border-[#e4e6eb] px-4 py-2 text-[12px] font-bold text-[#65676b]">
+          <span className="flex items-center gap-1"><ThumbsUp className="h-4 w-4" /> {1_200 + rank * 83}</span>
+          <span>{24 + rank} comments · {8 + rank} shares</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InstagramPlacement({ variation, rank }: { variation: AdVariation; rank: number }) {
+  return (
+    <div className="bg-white p-3">
+      <div className="overflow-hidden rounded-[18px] border border-zinc-200 bg-white text-[#262626] shadow-sm">
+        <div className="flex items-center gap-3 p-3">
+          <div className="h-9 w-9 rounded-full bg-[linear-gradient(45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5)] p-[2px]">
+            <div className="flex h-full w-full items-center justify-center rounded-full bg-white text-orange-600"><ShoppingBag className="h-4 w-4" /></div>
+          </div>
+          <div>
+            <p className="text-[13px] font-bold">yourbrand</p>
+            <p className="text-[11px] font-semibold">Sponsored</p>
+          </div>
+          <MoreHorizontal className="ml-auto h-5 w-5" />
+        </div>
+        <CreativeVisual variation={variation} compact />
+        <div className="p-3">
+          <div className="mb-2 flex items-center gap-4">
+            <Heart className="h-6 w-6" />
+            <MessageCircle className="h-6 w-6" />
+            <Send className="h-6 w-6" />
+          </div>
+          <p className="text-[13px] font-bold">{1_840 + rank * 61} likes</p>
+          <p className="mt-1 line-clamp-3 text-[13px] leading-[1.35]"><span className="font-bold">yourbrand</span> {variation.primaryText}</p>
+          <span className="mt-3 block w-full rounded-lg bg-[#0095f6] py-2 text-center text-[13px] font-bold text-white">{variation.cta.replaceAll("_", " ")}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WhatsAppPlacement({ variation }: { variation: AdVariation; rank: number }) {
+  return (
+    <div className="bg-[#e5ddd5] p-3">
+      <div className="overflow-hidden rounded-[22px] border border-emerald-100 bg-[#efeae2] shadow-sm">
+        <div className="flex items-center gap-3 bg-[#075e54] px-4 py-3 text-white">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15"><MessageCircle className="h-5 w-5" /></div>
+          <div>
+            <p className="text-sm font-black">Your Brand</p>
+            <p className="text-[11px] font-semibold text-white/70">Sponsored message preview</p>
+          </div>
+        </div>
+        <div className="space-y-3 p-4">
+          <div className="ml-auto max-w-[86%] rounded-2xl rounded-tr-sm bg-[#dcf8c6] p-3 text-left shadow-sm">
+            <p className="text-[13px] font-semibold leading-5 text-zinc-900">{variation.primaryText}</p>
+          </div>
+          <div className="ml-auto max-w-[86%] overflow-hidden rounded-2xl rounded-tr-sm bg-white shadow-sm">
+            <CreativeVisual variation={variation} compact />
+            <div className="p-3 text-left">
+              <p className="text-sm font-black text-zinc-950">{variation.headline}</p>
+              <p className="mt-1 text-xs font-semibold text-zinc-500">{variation.description}</p>
+              <span className="mt-3 block w-full rounded-lg bg-[#25d366] py-2 text-center text-xs font-black text-white">Message on WhatsApp</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WebAppPlacement({ variation }: { variation: AdVariation; rank: number }) {
+  return (
+    <div className="bg-zinc-100 p-3">
+      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+        <div className="flex items-center gap-2 border-b border-zinc-100 bg-zinc-50 px-3 py-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+          <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+          <span className="ml-2 text-[10px] font-bold text-zinc-400">yourbrand.com/ad</span>
+        </div>
+        <div className="grid gap-3 p-4">
+          <CreativeVisual variation={variation} compact />
+          <div className="text-left">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-orange-600">{variation.bestFor}</p>
+            <h3 className="mt-2 text-xl font-black leading-tight text-zinc-950">{variation.headline}</h3>
+            <p className="mt-2 line-clamp-3 text-sm font-semibold leading-6 text-zinc-600">{variation.primaryText}</p>
+            <span className="mt-4 inline-flex rounded-lg bg-zinc-950 px-4 py-2 text-xs font-black text-white">{variation.cta.replaceAll("_", " ")}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VariationCopyBlock({ variation, best }: { variation: AdVariation; best: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-lg font-black">{variation.headline}</p>
+        {best && <span className="rounded-full bg-black px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">Best</span>}
+      </div>
+      <p className="mt-1 text-xs font-black uppercase tracking-widest text-zinc-400">{variation.name} · {variation.angle}</p>
+      <p className="mt-3 line-clamp-3 text-sm font-semibold leading-6 text-zinc-700">{variation.primaryText}</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-black text-zinc-600">Keyword: {variationKeyword(variation)}</span>
+        <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-black text-zinc-600">CTA: {variation.cta.replaceAll("_", " ")}</span>
+        <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-black text-zinc-600">{variation.bestFor}</span>
+      </div>
+    </div>
+  );
+}
+
+function VariationForecastBlock({ variation, currency, cpm }: { variation: AdVariation; currency: string; cpm: number }) {
+  const forecast = variationForecast(variation, cpm);
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      <Metric label="Score" value={`${variation.adQualityScore}/10`} />
+      <Metric label="CTR" value={`${variation.ctrPrediction}%`} />
+      <Metric label="Conversions" value={forecast.conversions.toLocaleString()} />
+      <Metric label="Clicks" value={forecast.clicks.toLocaleString()} />
+      <Metric label="CPC" value={formatMoney(forecast.cpc, currency)} />
+      <Metric label="CPA" value={formatMoney(forecast.cpa, currency)} />
+    </div>
   );
 }
 
@@ -1013,7 +1654,7 @@ function AdPreview({ ad }: { ad?: AdVariation }) {
           <div className="p-4"><p className="text-sm font-black">Your Brand</p><p className="text-xs font-semibold text-zinc-500">Promoted</p></div>
           <p className="px-4 pb-4 text-sm font-semibold leading-6 text-zinc-800">{ad?.primaryText || "Run agents to preview the recommended ad."}</p>
           <div className="flex aspect-square items-center justify-center bg-zinc-100"><ImageIcon className="h-10 w-10 text-zinc-300" /></div>
-          <div className="flex items-center justify-between gap-3 bg-zinc-50 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-black">{ad?.headline || "Headline"}</p><p className="truncate text-xs font-semibold text-zinc-500">{ad?.description || "Description"}</p></div><button className="rounded-md bg-black px-3 py-2 text-xs font-black text-white">{(ad?.cta || "LEARN_MORE").replaceAll("_", " ")}</button></div>
+          <div className="flex items-center justify-between gap-3 bg-zinc-50 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-black">{ad?.headline || "Headline"}</p><p className="truncate text-xs font-semibold text-zinc-500">{ad?.description || "Description"}</p></div><span className="rounded-md bg-black px-3 py-2 text-xs font-black text-white">{(ad?.cta || "LEARN_MORE").replaceAll("_", " ")}</span></div>
         </div>
       </div>
     </div>

@@ -31,6 +31,8 @@ app.use('/api/agents', require('./routes/agents'));
 app.use('/api/agent', require('./routes/agents'));
 app.use('/api/mcp', require('./routes/mcp'));
 app.use('/api/campaign-drafts', require('./routes/campaignDrafts'));
+app.use('/api/ad-creative-history', require('./routes/adCreativeHistory'));
+app.use('/api/ad-creative-previews', require('./routes/adCreativePreviews'));
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
 app.use((err, _req, res, _next) => {

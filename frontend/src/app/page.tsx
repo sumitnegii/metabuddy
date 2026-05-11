@@ -8,6 +8,7 @@ import clsx from "clsx";
 import { FloatingFeed } from "../components/ads/FloatingFeed";
 import { Footer } from "../components/layout/Footer";
 import { Hero } from "../components/home/Hero";
+import { CampaignConstellation, EnergyRings, MarketingFlowBackground, SignalShaderBackground } from "../components/home/LandingEffects";
 import { LogoMarquee } from "../components/home/LogoMarquee";
 import { SocialAgentsShowcase } from "../components/home/SocialAgentsShowcase";
 import { Testimonials } from "../components/home/Testimonials";
@@ -81,13 +82,14 @@ export default function Home() {
         isLoggedIn={Boolean(user)}
       />
 
-      <Hero onGenerate={handleGenerate} />
+      <Hero onGenerate={handleGenerate} isLoggedIn={Boolean(user)} userName={user?.name} />
 
       {/* ── Logo Trust Bar ── */}
       <LogoMarquee />
 
       {/* ── How It Works ── */}
-      <section id="how-it-works" className="py-24 px-4 relative z-10 bg-white">
+      <section id="how-it-works" className="py-24 px-4 relative z-10 overflow-hidden bg-white">
+        <MarketingFlowBackground density="section" className="opacity-55" />
         <FadeInUp className="text-center mb-3">
           <span className="section-label accent-text">✦ How it works</span>
         </FadeInUp>
@@ -119,7 +121,8 @@ export default function Home() {
       </section>
 
       {/* ── Features ── */}
-      <section id="features" className="py-28 px-4 relative z-10">
+      <section id="features" className="py-28 px-4 relative z-10 overflow-hidden">
+        <CampaignConstellation className="opacity-50" />
         <FadeInUp className="text-center mb-16">
           <span className="section-label accent-text">✦ Magic Features</span>
           <h2 className="heading text-4xl sm:text-5xl mt-4">
@@ -150,14 +153,17 @@ export default function Home() {
       <SocialAgentsShowcase />
 
       {/* ── AI Agents Terminal ── */}
-      <section className="py-28 px-4 relative z-10 bg-[#fafafa]">
-        <div className="max-w-2xl mx-auto text-center mb-12">
+      <section className="py-28 px-4 relative z-10 overflow-hidden bg-[#fafafa]">
+        <SignalShaderBackground className="opacity-35" />
+        <MarketingFlowBackground density="section" className="opacity-45" />
+        <EnergyRings className="opacity-45" />
+        <div className="relative z-10 max-w-2xl mx-auto text-center mb-12">
           <span className="section-label accent-text mb-3">✦ Magic Agents</span>
           <h2 className="heading text-4xl sm:text-5xl">
             AI working <span className="serif-italic font-medium text-slate-700">24/7 for you.</span>
           </h2>
         </div>
-        <div className="max-w-2xl mx-auto">
+        <div className="relative z-10 max-w-2xl mx-auto">
           <div className="soft-card overflow-hidden">
             <div className="flex items-center gap-2 px-5 py-3.5 border-b" style={{ borderColor: "rgba(15,23,42,0.06)", background: "#fafaf6" }}>
               <div className="w-2.5 h-2.5 rounded-full bg-rose-400" />
@@ -197,6 +203,7 @@ export default function Home() {
 
       {/* ── Big Stats ── */}
       <section className="py-32 px-4 relative z-10 bg-[#fafafa] overflow-hidden">
+        <CampaignConstellation className="opacity-45" />
         <FadeInUp className="text-center mb-16">
           <span className="section-label accent-text">✦ Proven Results</span>
           <h2 className="heading text-4xl sm:text-5xl mt-4">
@@ -229,8 +236,9 @@ export default function Home() {
       <Testimonials />
 
       {/* ── Pricing ── */}
-      <section id="pricing" className="py-24 px-4 relative z-10 bg-[#fafafa]">
-        <div className="max-w-6xl mx-auto">
+      <section id="pricing" className="py-24 px-4 relative z-10 overflow-hidden bg-[#fafafa]">
+        <EnergyRings className="opacity-35" />
+        <div className="relative z-10 max-w-6xl mx-auto">
           <FadeInUp className="text-center mb-4">
             <span className="section-label accent-text">✦ Pricing</span>
           </FadeInUp>

@@ -1292,15 +1292,17 @@ async function getCampaignDetail(userId, campaignId) {
     ...(preference.selectedAdAccountId ? { adAccountId: preference.selectedAdAccountId } : {}),
   });
   if (!campaign) throw new Error('Imported Meta campaign not found');
-  const [adSets, ads, recommendations, actionLogs] = await Promise.all([
+  const [adSets, ads, recommendations, actionLogs, dailyInsights, latestInsightSnapshot] = await Promise.all([
     MetaAdSet.find({ userId, metaCampaignId: campaignId }).sort({ 'lastInsights.spend': -1 }),
     MetaAd.find({ userId, metaCampaignId: campaignId }).sort({ 'lastInsights.spend': -1 }),
     MetaRecommendation.find({ userId, campaignId }).sort({ createdAt: -1 }),
     MetaActionLog.find({ userId, entityType: 'campaign', entityId: campaignId }).sort({ createdAt: -1 }).limit(12),
+    MetaDailyInsight.find({ userId, entityType: 'campaign', entityId: campaignId }).sort({ date: 1 }).limit(90),
+    MetaInsightSnapshot.findOne({ userId, entityType: 'campaign', entityId: campaignId }).sort({ createdAt: -1 }),
   ]);
 
   const latestAgentReport = actionLogs.find((log) => log.actionType === 'campaign_agent_audit')?.responsePayload || null;
-  return { campaign, adSets, ads, recommendations, actionLogs, latestAgentReport };
+  return { campaign, adSets, ads, recommendations, actionLogs, dailyInsights, latestInsightSnapshot, latestAgentReport };
 }
 
 async function updateCampaignStatus(userId, campaignId, status) {
@@ -1373,26 +1375,29 @@ async function updateCampaignStatus(userId, campaignId, status) {
 async function getAdDetail(userId, adId) {
   const ad = await MetaAd.findOne({ userId, metaAdId: adId });
   if (!ad) throw new Error('Imported Meta ad not found');
-  const [campaign, adSet, recommendations, actionLogs] = await Promise.all([
+  const [campaign, adSet, recommendations, actionLogs, dailyInsights, latestInsightSnapshot] = await Promise.all([
     MetaCampaign.findOne({ userId, metaCampaignId: ad.metaCampaignId }),
     ad.metaAdSetId ? MetaAdSet.findOne({ userId, metaAdSetId: ad.metaAdSetId }) : null,
     MetaRecommendation.find({ userId, entityType: 'ad', entityId: ad.metaAdId }).sort({ createdAt: -1 }),
     MetaActionLog.find({ userId, entityType: 'ad', entityId: ad.metaAdId }).sort({ createdAt: -1 }).limit(20),
+    MetaDailyInsight.find({ userId, entityType: 'ad', entityId: ad.metaAdId }).sort({ date: 1 }).limit(90),
+    MetaInsightSnapshot.findOne({ userId, entityType: 'ad', entityId: ad.metaAdId }).sort({ createdAt: -1 }),
   ]);
-  return { ad, campaign, adSet, recommendations, actionLogs };
+  return { ad, campaign, adSet, recommendations, actionLogs, dailyInsights, latestInsightSnapshot };
 }
 
 async function getAdSetDetail(userId, adSetId) {
   const adSet = await MetaAdSet.findOne({ userId, metaAdSetId: adSetId });
   if (!adSet) throw new Error('Imported Meta ad set not found');
-  const [campaign, ads, recommendations, actionLogs, dailyInsights] = await Promise.all([
+  const [campaign, ads, recommendations, actionLogs, dailyInsights, latestInsightSnapshot] = await Promise.all([
     MetaCampaign.findOne({ userId, metaCampaignId: adSet.metaCampaignId }),
     MetaAd.find({ userId, metaAdSetId: adSet.metaAdSetId }).sort({ 'lastInsights.spend': -1 }),
     MetaRecommendation.find({ userId, entityType: 'adset', entityId: adSet.metaAdSetId }).sort({ createdAt: -1 }),
     MetaActionLog.find({ userId, entityType: 'adset', entityId: adSet.metaAdSetId }).sort({ createdAt: -1 }).limit(20),
     MetaDailyInsight.find({ userId, entityType: 'adset', entityId: adSet.metaAdSetId }).sort({ date: 1 }).limit(90),
+    MetaInsightSnapshot.findOne({ userId, entityType: 'adset', entityId: adSet.metaAdSetId }).sort({ createdAt: -1 }),
   ]);
-  return { adSet, campaign, ads, recommendations, actionLogs, dailyInsights };
+  return { adSet, campaign, ads, recommendations, actionLogs, dailyInsights, latestInsightSnapshot };
 }
 
 async function analyzeAd(userId, adId) {
